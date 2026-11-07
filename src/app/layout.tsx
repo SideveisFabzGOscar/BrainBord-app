@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: { default: 'SkoleHub', template: '%s · SkoleHub' },
+  title: { default: 'Brainbord', template: '%s · Brainbord' },
   description: 'All skoleinformasjon samlet på ett sted',
   robots: { index: false, follow: false },
 };

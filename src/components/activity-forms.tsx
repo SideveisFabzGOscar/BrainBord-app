@@ -8,6 +8,7 @@ import { fmtDateTime } from '@/lib/format';
 import { PLATFORM_LABEL, STATUS_META, TYPE_LABEL, type ActivityType, type Role, type WorkStatus } from '@/lib/meta';
 import type { ActivityItem } from '@/lib/data';
 import { Modal, StatusBadge, TypeBadge } from './ui';
+import { OpenButton } from './open-button';
 
 export interface SubjectOption { id: string; name: string; code: string; className?: string | null }
 
@@ -111,6 +112,7 @@ export function ActivityDetail({ a, role, canManage, onChanged }: {
         <dt className="text-muted">Kilde</dt><dd>{PLATFORM_LABEL[a.sourcePlatform] ?? a.sourcePlatform}</dd>
         {a.grade && (<><dt className="text-muted">{a.kind === 'test' ? 'Resultat' : 'Karakter'}</dt><dd className="font-semibold">{a.grade}</dd></>)}
       </dl>
+      {a.open && <OpenButton link={a.open} />}
       <div>
         <div className="label">Beskrivelse</div>
         <p className="whitespace-pre-wrap text-sm leading-relaxed">{a.description || <span className="text-muted">Ingen beskrivelse</span>}</p>

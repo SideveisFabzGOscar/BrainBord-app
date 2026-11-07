@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genererer supabase/seed.sql med SYNTETISKE testdata for SkoleHub.
+Genererer supabase/seed.sql med SYNTETISKE testdata for Brainbord.
 Ingen ekte personer. Alle navn er tilfeldig satt sammen.
 Kjør:  python3 scripts/generate_seed.py > supabase/seed.sql
 """
@@ -15,7 +15,7 @@ def q(v):
     if isinstance(v, (int, float)): return str(v)
     return "'" + str(v).replace("'", "''") + "'"
 
-PASSWORD = "SkoleHub!2026"   # kun for lokal utvikling/testbrukere
+PASSWORD = "Brainbord!2026"   # kun for lokal utvikling/testbrukere
 TODAY = dt.date(2026, 11, 7)
 YEAR_START, YEAR_END = dt.date(2026, 8, 17), dt.date(2027, 6, 18)
 
@@ -179,7 +179,8 @@ for aid, subj, title, kind, start, due, hour, cname in assignment_rows:
         else:
             st = random.choices(["ikke_startet", "pagar"], [85, 15])[0]
         if st == "ikke_startet" and due >= TODAY: continue   # ingen rad = ikke startet
-        sub_at = q((due - dt.timedelta(days=random.randint(0, 2))).isoformat() + " 20:00+01") if st in ("levert", "fullfort") else "null"
+        # Levering kan aldri ligge i framtiden
+        sub_at = q((min(due, TODAY - dt.timedelta(days=1)) - dt.timedelta(days=random.randint(0, 2))).isoformat() + " 20:00+01") if st in ("levert", "fullfort") else "null"
         grade = q(str(random.choice([3, 4, 4, 5, 5, 6]))) if st == "fullfort" else "null"
         assess = q("God innsats. Se kommentarer i dokumentet.") if st == "fullfort" else "null"
         w(f"insert into public.submissions (student_id,assignment_id,submitted_at,status,assessment,grade) values "
@@ -237,5 +238,7 @@ for plat, name, status in [("teams", "Microsoft Teams / M365 Education", "ikke_t
                            ("mock", "Testintegrasjon (syntetiske data)", "testmodus")]:
     w(f"insert into public.integrations (school_id,platform,display_name,status) values ({q(SCHOOL)},{q(plat)},{q(name)},{q(status)});")
 
+w("-- Merk testskolene som eksempeldata (vises tydelig i grensesnittet)")
+w("update public.schools set is_demo = true;")
 w("commit;")
 print("\n".join(out))

@@ -31,7 +31,7 @@ export class MemoryStore implements SyncStore {
       this.activities.set(k, {
         id: prev?.id ?? `a${++this.seq}`, kind, platform: r.platform, externalId: r.activity.externalId,
         title: r.activity.title, description: r.activity.description ?? null, dueAt: r.activity.dueAt,
-        startsAt: r.activity.startsAt ?? null, activityType: r.activity.activityType, subjectId: r.subjectId,
+        startsAt: r.activity.startsAt ?? null, activityType: r.activity.activityType, subjectId: r.subjectId, url: r.activity.url ?? null,
       });
     }
   }

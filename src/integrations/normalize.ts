@@ -48,6 +48,12 @@ export function isValidIso(d: string | null | undefined): d is string {
   return !!d && !Number.isNaN(Date.parse(d));
 }
 
+/** Godtar bare absolutte https-lenker uten innebygd brukernavn/passord */
+export function httpsOrNull(u: unknown): string | null {
+  if (typeof u !== 'string' || !u.trim()) return null;
+  try { const x = new URL(u.trim()); return x.protocol === 'https:' && !x.username && !x.password ? x.toString() : null; } catch { return null; }
+}
+
 export function validateActivity(a: NormalizedActivity): string | null {
   if (!a.title?.trim()) return 'Mangler tittel';
   if (!isValidIso(a.dueAt)) return `Ugyldig dato/frist: ${a.dueAt}`;

@@ -1,5 +1,5 @@
 import { clientCredentialsToken, requestJson } from '../http';
-import { classifyByTitle, isTestType, stripHtml } from '../normalize';
+import { classifyByTitle, httpsOrNull, isTestType, stripHtml } from '../normalize';
 import { IntegrationError, type Connector, type ConnectorContext, type NormalizeResult } from '../types';
 
 /**
@@ -12,7 +12,7 @@ interface GraphClass { id: string; displayName: string; classCode?: string | nul
 interface GraphAssignment {
   id: string; displayName: string; status?: string;
   instructions?: { content?: string } | null;
-  dueDateTime?: string | null; assignedDateTime?: string | null; createdDateTime?: string | null;
+  dueDateTime?: string | null; assignedDateTime?: string | null; createdDateTime?: string | null; webUrl?: string | null;
 }
 export interface TeamsRaw { classes: { cls: GraphClass; assignments: GraphAssignment[] }[] }
 
@@ -80,6 +80,7 @@ export const teamsConnector: Connector<TeamsRaw> = {
           subjectName: cls.displayName,
           startsAt: a.assignedDateTime ?? null,
           dueAt: a.dueDateTime,
+          url: httpsOrNull(a.webUrl), courseExternalId: cls.id,
         });
       }
     }

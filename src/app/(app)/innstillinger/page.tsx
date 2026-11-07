@@ -42,7 +42,7 @@ export default async function InnstillingerPage() {
     <>
       <PageHeader title="Innstillinger" description={`${ROLE_LABEL[s.role]} · ${s.schoolName ?? ''}`} />
       <div className="space-y-6">
-        <Section title="Profil" description="Navnet ditt slik det vises i SkoleHub."><ProfileForm fullName={s.fullName} email={s.email} /></Section>
+        <Section title="Profil" description="Navnet ditt slik det vises i Brainbord."><ProfileForm fullName={s.fullName} email={s.email} /></Section>
         <Section title="Utseende" description="Bytt mellom lyst og mørkt tema med sol/måne-ikonet øverst til høyre. Valget lagres i nettleseren.">
           <p className="text-sm text-muted">Følger systeminnstillingen til du velger selv.</p>
         </Section>

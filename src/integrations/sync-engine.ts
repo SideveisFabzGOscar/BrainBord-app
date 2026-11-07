@@ -7,7 +7,7 @@ import {
 /** Lagringslag – implementeres av Supabase (prod) og minne (tester) */
 export interface ExistingActivity {
   id: string; title: string; description: string | null; dueAt: string; startsAt: string | null;
-  activityType: string; subjectId: string | null;
+  activityType: string; subjectId: string | null; url?: string | null;
 }
 
 export interface ActivityRow {
@@ -106,7 +106,7 @@ export async function runSync(opts: {
       if (!ex) { created++; toWrite.push({ schoolId: ctx.schoolId, subjectId, platform: connector.platform, activity: a }); continue; }
       const changed = ex.title !== a.title || (ex.description ?? null) !== (a.description ?? null)
         || !sameInstant(ex.dueAt, a.dueAt) || !sameInstant(ex.startsAt, a.startsAt ?? null)
-        || ex.activityType !== a.activityType || ex.subjectId !== subjectId;
+        || ex.activityType !== a.activityType || ex.subjectId !== subjectId || (ex.url ?? null) !== (a.url ?? null);
       if (changed) { updated++; toWrite.push({ id: ex.id, schoolId: ctx.schoolId, subjectId, platform: connector.platform, activity: a }); }
       else skipped++;
     }

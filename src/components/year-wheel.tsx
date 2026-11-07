@@ -54,7 +54,8 @@ export function YearWheel({ activities, subjects, role, yearStart, yearEnd, year
     && (status === 'alle' || a.status === status)), [activities, subject, groups, status]);
 
   const selected = activities.find((a) => a.id === selectedId) ?? null;
-  const canCreate = role !== 'parent';
+  /** Bare lærer og admin kan legge ut oppgaver og prøver. Elever og foresatte har lesetilgang. */
+  const canCreate = role === 'teacher' || role === 'admin';
   const notify = (msg: string, ok: boolean, close?: boolean) => { toast(msg, ok ? 'ok' : 'err'); if (close) setSelectedId(null); };
 
   const step = (dir: number) => {
@@ -79,7 +80,7 @@ export function YearWheel({ activities, subjects, role, yearStart, yearEnd, year
         <div role="tablist" aria-label="Visning" className="flex rounded-lg bg-ink/5 p-0.5">
           {([['ar', 'År'], ['maned', 'Måned'], ['uke', 'Uke']] as [View, string][]).map(([v, l]) => (
             <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
-              className={clsx('rounded-md px-3 py-1.5 text-sm transition', view === v ? 'bg-panel font-medium shadow-sm' : 'text-muted hover:text-ink')}>{l}</button>
+              className={clsx('rounded-md px-3 py-1.5 text-sm transition', view === v ? 'bg-panel font-medium shadow-low' : 'text-muted hover:text-ink')}>{l}</button>
           ))}
         </div>
         {view !== 'ar' && (
@@ -219,7 +220,7 @@ function WheelView({ items, yearStart, yearEnd, yearLabel, onSelect, onMonth }: 
           <text x={c} y={c + 30} textAnchor="middle" fontSize={12} fill="rgb(var(--muted))">{Math.round(pastShare * 100)} % gjennomført</text>
         </svg>
         {hover && (
-          <div className="pointer-events-none absolute z-10 w-56 -translate-x-1/2 -translate-y-full rounded-lg border border-line bg-panel p-2.5 text-xs shadow-xl"
+          <div className="pointer-events-none absolute z-10 w-56 -translate-x-1/2 -translate-y-full rounded-lg border border-line bg-panel p-2.5 text-xs shadow-pop"
             style={{ left: `calc(${(hover.x / size) * 100}% )`, top: `calc(${(hover.y / size) * 100}% - 10px)` }}>
             <div className="font-medium">{hover.a.title}</div>
             <div className="mt-0.5 text-muted">{hover.a.subjectName ?? 'Personlig'} · {fmtWeekday(hover.a.date)}</div>
@@ -309,7 +310,7 @@ function WeekView({ items, cursor, onSelect }: { items: ActivityItem[]; cursor: 
               {list.length === 0 && <div className="px-1 text-xs text-muted/60">–</div>}
               {list.map((a) => (
                 <button key={a.id} onClick={() => onSelect(a.id)}
-                  className="block w-full rounded-lg border border-line p-2 text-left transition hover:border-accent/40 hover:shadow-sm"
+                  className="block w-full rounded-lg border border-line p-2 text-left transition hover:border-accent/40 hover:shadow-lift"
                   style={{ borderLeft: `3px solid ${GROUP_META[COLOR_GROUP_OF[a.activityType]].hex}` }}>
                   <div className="text-xs font-medium leading-snug">{a.title}</div>
                   <div className="mt-1 text-[11px] text-muted">{a.subjectName ?? 'Personlig'} · {new Date(a.date).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })}</div>

@@ -48,7 +48,7 @@ export function ActivityTable({ items, subjects, role, managed, types, createLab
           options={[{ value: 'alle', label: 'Alle typer' }, ...types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))]} />}
         {showStatus && <Select label="Status" value={status} onChange={setStatus}
           options={[{ value: 'alle', label: 'Alle statuser' }, ...Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: m.label }))]} />}
-        {role !== 'parent' && <button className="btn-primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> {createLabel}</button>}
+        {(role === 'teacher' || role === 'admin') && <button className="btn-primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> {createLabel}</button>}
       </div>
 
       <div className="card overflow-x-auto">

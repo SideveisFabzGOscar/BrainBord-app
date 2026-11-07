@@ -1,4 +1,4 @@
-# SkoleHub
+# Brainbord
 
 Samler oppgaver, innleveringer, prøver, fravær og dokumentasjon fra flere læringsplattformer i én database, med et interaktivt årshjul som hovedvisning.
 
@@ -18,7 +18,7 @@ openssl rand -base64 32       # lim inn som DOCUMENT_ENCRYPTION_KEY i .env.local
 npm run dev                   # http://localhost:3000
 ```
 
-Testbrukere (syntetiske, passord `SkoleHub!2026`):
+Testbrukere (syntetiske, passord `Brainbord!2026`):
 
 | Rolle | E-post |
 |---|---|
@@ -31,7 +31,7 @@ Testbrukere (syntetiske, passord `SkoleHub!2026`):
 Tester:
 
 ```bash
-npm test                                  # integrasjonsarkitekturen (9 tester)
+npm test                                  # 42 enhetstester: integrasjoner, OAuth, direkte lenker, samling, assistent
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm run db:test   # tilgangsregler (RLS)
 npm run typecheck
 ```
@@ -45,7 +45,7 @@ npm run typecheck
 | Del | Hvordan det er verifisert |
 |---|---|
 | Databaseskjema (14 tabeller + `activities`-visning) med relasjoner, flere skoler/klasser/skoleår | Migrasjoner kjørt mot ekte PostgreSQL 16 |
-| Row Level Security for alle tabeller og roller | `supabase/tests/rls_test.sql`: 9 testgrupper bestått (elev, lærer, foresatt, uverifisert foresatt, skoleseparasjon, admin, GDPR) |
+| Row Level Security for alle tabeller og roller | `supabase/tests/rls_test.sql`: 16 testgrupper bestått (elev, lærer, foresatt, uverifisert foresatt, skoleseparasjon, admin, GDPR, personlige tilkoblinger, løst-markeringer, egen status, elev kan ikke legge ut oppgaver/prøver) |
 | Revisjonslogg (triggere på fravær, dokumenter, karakterer, elever, foresatte) + logging av dokumentåpning | Del av RLS-testene |
 | GDPR-innsyn (eksport) og sletting med revisjonsspor | Del av RLS-testene |
 | Integrasjonsmotor: connector-grensesnitt, normalisering, validering, duplikatkontroll (i batch og mot DB), retry/backoff, feil per rad, logging med maskerte e-poster | `tests/integrations.test.ts`: 9 tester bestått |
@@ -72,6 +72,83 @@ Ingen scraping og ingen forsøk på å omgå innlogging.
 
 ---
 
+## Personlige tilkoblinger: iSkole, Canvas og Teams
+
+Hver bruker kobler sin **egen** konto under **Integrasjoner → Mine tilkoblinger**. Innlogging skjer hos tjenesten selv (OAuth 2.0); Brainbord ser aldri passord, og tofaktor gjøres hos leverandøren. Alt samles i **Samlet oversikt**, **Mine oppgaver** og **Assistent**.
+
+| | iSkole | Canvas LMS | Microsoft Teams for Education |
+|---|---|---|---|
+| Offisiell tilgang | **Ingen dokumentert API** (undersøkt i dokumentasjonen til Barman Hanssen AS) | OAuth 2.0 med Developer Key | Microsoft identity platform (OAuth 2.0 + PKCE), Graph Education API |
+| Hentes | Ingenting direkte. Fravær vises når skolen importerer det | Fag, oppgaver, innleveringsstatus, quiz, karakter/poeng, kunngjøringer, kalender, innboks | Klasser, oppgaver, innleveringsstatus, poeng (kun med `EduAssignments.Read`) |
+| Tillatelser | – | Bare lesing: `url:GET\|…` for courses, assignments, announcements, calendar_events, conversations, users | `User.Read`, `EduRoster.ReadBasic`, `EduAssignments.ReadBasic`, `offline_access` |
+| Status i appen | «Ikke tilkoblet» + forklaring | Koble til / Synkroniser / Koble fra | Koble til / Synkroniser / Koble fra |
+
+**Sikkerhet i tilkoblingene**
+* Tokens krypteres med AES-256-GCM (`TOKEN_ENCRYPTION_KEY`), bundet til bruker og tjeneste, og tokenkolonnene kan ikke leses av noen innlogget bruker (kolonnerettigheter i databasen).
+* OAuth-state og PKCE-verifier ligger i en kryptert, httpOnly-cookie som er bundet til brukeren og utløper etter 10 minutter.
+* Tokens sendes bare i `Authorization`-headeren, aldri i URL-er, frontend eller logger.
+* Utløpt token fornyes automatisk. Avvist fornyelse gir «Tilkobling feilet» og beskjed om å koble til på nytt.
+* 401 = utløpt, 403 = manglende tillatelse (vises som advarsel for den delen), 429 = venter etter `Retry-After`.
+* «Koble fra» tilbakekaller tokenet hos Canvas og sletter tokens og alle hentede data. Microsoft har ikke tilbakekalling av ett enkelt token; brukeren kan fjerne appen på myapps.microsoft.com.
+* Hentede data er bare synlige for brukeren selv. Verken admin eller foresatte kan se dem (testet).
+* Like oppgaver i Canvas, Teams og Brainbord slås sammen (samme fristdag og lik tittel), og alle kilder vises.
+
+**AI-assistent:** Oppsummerer, prioriterer, lager ukeplan og oppsummerer kunngjøringer. Uten `ANTHROPIC_API_KEY` brukes bare regelbaserte svar beregnet direkte fra dataene. Med nøkkel formulerer en språkmodell svaret, men hvert svar kontrolleres: ukjente referanser, datoer som ikke finnes i dataene og nevnte karakterer/fravær gjør at AI-svaret forkastes. Fravær og karakterer sendes ikke til AI-tjenesten.
+
+### Hva som er testet, og hva som ikke er det
+* ✅ OAuth-flyt, tokenkryptering, state/PKCE, fornyelse, feilhåndtering, frakobling og datakonvertering for Canvas og Teams: **testet mot simulerte API-svar** som følger leverandørenes dokumentasjon.
+* ✅ At brukere bare ser egne tilkoblinger og data, og ikke kan lese tokens: **testet mot ekte PostgreSQL** med RLS.
+* ✅ Sammenslåing av duplikater, prioritering, ukeplan og assistentens validering: enhetstester.
+* ❌ **Ikke testet mot ekte Canvas eller Microsoft 365.** Det krever nøklene under. Første ekte test bør gjøres med en testelev.
+* ❌ Next.js-sidene er typesjekket, men ikke kjørt i nettleser i utviklingsmiljøet.
+
+### Dette mangler for at tilkoblingene skal virke på din skole
+1. **Canvas:** Skolens Canvas-administrator må opprette en *API Developer Key* med redirect-URI `https://<din-app>/api/connect/canvas/callback` og slå den på. Du får `CANVAS_CLIENT_ID` og `CANVAS_CLIENT_SECRET`, og trenger `CANVAS_BASE_URL` (f.eks. `https://skolenavn.instructure.com`). Håndhever nøkkelen scopes, må lesetilgangene i tabellen over velges.
+2. **Microsoft Teams:** Skolens IT må registrere en app i Microsoft Entra ID (web-plattform, redirect-URI `https://<din-app>/api/connect/teams/callback`), lage en klienthemmelighet, legge til de delegerte tillatelsene over og **gi administratorsamtykke** (`EduAssignments.ReadBasic` krever det). Sett `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID`. Karakterer krever i tillegg `EduAssignments.Read` og `MS_INCLUDE_GRADES=true`.
+3. **iSkole:** Skoleeier (fylkeskommune/kommune) må spørre Barman Hanssen AS om en godkjent integrasjon eller API-tilgang. Inntil da kan skolen importere fravær med CSV under Skolens integrasjoner. Timeplan fra iSkole kan ikke vises uten dette.
+4. **Generelt:** `APP_URL` (https), `TOKEN_ENCRYPTION_KEY`, migrasjon `20261107000005_user_connections.sql` kjørt, og oppdatert personvernkonsekvensvurdering (DPIA) for innhenting fra nye kilder. Bruker dere AI-assistenten med nøkkel, trengs databehandleravtale med AI-leverandøren.
+5. **Ikke inkludert:** Teams-kanalmeldinger og chat (krever bredere tillatelser enn nødvendig), og timeplan fra Outlook-kalender.
+
+## Direkte navigering til oppgaver og prøver
+
+Alle oppgaver og prøver har en **«Åpne oppgave»/«Åpne prøve»**-knapp som går rett til riktig side i kildesystemet (ny fane). Knappen finnes i Samlet oversikt (smart oversikt med kommende prøver, innleveringer, forfalte og leverte), Mine oppgaver, årshjulet og assistenten.
+
+| Kilde | Hvor lenken kommer fra | Hvis direkte lenke mangler |
+|---|---|---|
+| Canvas | `html_url` på oppgaven/quizen fra Canvas-API-et | Canvas-startsiden (`CANVAS_BASE_URL`) med forklaring |
+| Teams | `webUrl` (offisiell dyplenke). Listen `/education/me/assignments` gir ofte `null`, så lenken hentes fra `GET /education/classes/{id}/assignments/{id}` | Teams-startsiden med forklaring |
+| iSkole | Ingen API. Lenke finnes bare hvis skolen importerer den (kolonnen `lenke` i CSV) | `ISKOLE_PORTAL_URL` hvis satt, ellers vises oppgaven i Brainbord med forklaring |
+| Skolens import (Canvas/Teams på skolenivå) | Lagres i `assignments.source_url` / `tests.source_url` | Som over |
+
+**Regler som håndheves i koden:**
+* Ingen URL-er konstrueres. Emne- og meldingslenker i Canvas brukes ikke, fordi API-et ikke gir dem.
+* Lenker må være https og peke til riktig systems domene (`CANVAS_BASE_URL`-verten, `teams.microsoft.com`, iSkole-portalens vert). Andre lenker forkastes, så en manipulert oppgave ikke kan sende eleven til en falsk innloggingsside. Databasen avviser ikke-https-lenker.
+* Oppgave-ID, fag-ID og kilde lagres sammen med hver lenke (`external_id`, `course_id`/`source_course_id`, `platform`/`source_platform`, `link_kind`).
+* Innlogging skjer i kildesystemet. Brainbord åpner bare siden.
+* Teams-lenken åpner oppgavevisningen i Teams. Lenke direkte til selve innleveringen finnes bare i Graph beta, og brukes derfor ikke.
+
+**Assistenten** forstår spørsmål som «Når har jeg neste prøve?», «Vis meg matteinnleveringen», «Hvor finner jeg engelskleksa?», «Åpne prøven jeg har på fredag» og «Hvilke oppgaver må jeg levere denne uken?». Den søker i dine egne data (fag, type, dag, uke) og viser treffene med «Åpne»-knapper. Knappene lages fra lagrede lenker, aldri av en språkmodell. Finnes ingen treff, sier den det.
+
+**Testet:** vertssjekk, reserveløsninger, valg av beste lenke ved duplikater, Teams-dyplenkeoppslag, Canvas uten konstruerte lenker, CSV-lenker, og alle fem eksempelspørsmålene (enhetstester). Databasebegrensningene er testet mot PostgreSQL. **Ikke testet** mot ekte Canvas/Teams, og iSkole-lenker kan ikke hentes automatisk uten avtale med leverandøren.
+
+## Skygger
+
+Alle skygger styres av fem variabler, så de kan endres eller fjernes på ett sted. Gjelder både elevportalen (BrainBord) og lærerportalen (ClassFlow).
+
+| Variabel | Nivå | Brukes på |
+|---|---|---|
+| `--shadow-1` | Lav | Alle kort (`.card`: statistikkort, tabeller, skjemaer, kolonner), primærknapper, valgt fane i årshjulet |
+| `--shadow-2` | Løftet | Primærknapper ved hover, fagkort ved hover, ukekort i årshjulet ved hover, innloggingsvalg ved hover (demo: også logoen på startsiden) |
+| `--shadow-3` | Svevende | Bjellepanelet, verktøytips i årshjulet, varslinger (toast) |
+| `--shadow-4` | Flytende | Dialogbokser, detaljpanelet, mobilmenyen |
+| `--shadow-header` | Topplinje | Topplinjen øverst |
+
+* **App:** variablene står i `src/app/globals.css` (`:root` for lyst tema, `.dark` for mørkt), med en oversikt nederst i filen. Komponentene bruker klassene `shadow-low`, `shadow-lift`, `shadow-pop`, `shadow-float` og `shadow-header`.
+* **Demo:** variablene står øverst i `<style>` i `demo/skolehub-demo.html`, med samme oversikt som kommentar.
+* **Fjerne alle skygger:** sett de fem variablene til `none` (i både lyst og mørkt tema).
+* **Fjerne én type:** sett bare den variabelen til `none`, f.eks. `--shadow-1: none;` fjerner skyggen på alle kort og knapper.
+* Fokusringer (blå ring rundt aktive felt) og markeringen av dagens dato i ukevisningen er ikke skygger, og påvirkes ikke.
+
 ## Arkitektur
 
 ```
@@ -81,6 +158,10 @@ src/
     api/              integrasjoner/sync, import/csv, documents, gdpr, admin/users
     login/
   components/         årshjul, tabeller, skjemaer, diagrammer
+  connections/        personlige tilkoblinger: én modul per tjeneste
+    canvas.ts, teams.ts, iskole.ts   OAuth + henting + konvertering
+    service.ts        tilkobling, synk, tokenfornyelse, frakobling
+    vault.ts          kryptering av tokens, OAuth-state og PKCE
   integrations/
     types.ts          felles datastruktur + Connector-grensesnitt
     connectors/       teams, canvas, csv, partner-rest (itslearning/iSkole), mock
@@ -123,6 +204,7 @@ demo/                 frittstående klikkbar demo (ingen server)
 * **Roller:** elev (egne data), lærer (klasser og fag de underviser, aldri helsedokumenter), skoleadministrator (egen skole), foresatt (kun med verifisert behandlingsgrunnlag og gyldig dato).
 * **Ingen selvregistrering.** Nye brukere får laveste rolle; bare admin kan endre rolle/skole (trigger stopper forsøk).
 * **Elever kan ikke sette karakter** eller status «Fullført» (trigger).
+* **Bare lærere og admin kan legge ut oppgaver og prøver.** Elever og foresatte har lesetilgang. Eleven kan fortsatt sette egen status og huke av oppgaver som løst. Håndheves tre steder: knappene vises ikke (`year-wheel.tsx`, `activity-table.tsx`), serverfunksjonen avviser (`createActivity` i `actions.ts`), og databasen nekter (migrasjon `…0010_students_read_only.sql`).
 * **Sykemeldinger:** ingen diagnosefelt. Filer valideres på innhold (magic bytes), krypteres med AES-256-GCM på serveren, lagres i privat bucket uten klienttilgang. Hver nedlasting logges. Oppbevaringstid med automatisk sletting (`purge_expired_documents`, kjør med pg_cron).
 * **Hemmeligheter** (API-nøkler) ligger bare i servermiljøet. Konfig-skjemaet avviser tekst som ser ut som hemmeligheter.
 * **Logger** maskerer e-postadresser og fjerner query-parametere fra URL-er.

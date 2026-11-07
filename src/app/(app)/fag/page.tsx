@@ -30,7 +30,7 @@ export default async function FagPage() {
             const done = acts.filter((a) => a.kind === 'assignment' && (a.status === 'levert' || a.status === 'fullfort')).length;
             const total = acts.filter((a) => a.kind === 'assignment' && new Date(a.date) < now).length;
             return (
-              <div key={sub.id} className="card flex flex-col p-5 transition hover:shadow-md">
+              <div key={sub.id} className="card flex flex-col p-5 transition hover:shadow-lift">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-medium">{sub.name}</div>

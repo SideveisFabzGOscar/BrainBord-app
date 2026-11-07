@@ -18,7 +18,7 @@ export default async function OppgaverPage() {
       <ActivityTable items={activities.filter((a) => a.kind === 'assignment')} role={s.role} managed={managed}
         subjects={subjects.map((x) => ({ id: x.id, name: x.name, code: x.code, className: staff ? x.className : null }))}
         types={['innlevering', 'oppgave', 'lekse', 'prosjekt', 'presentasjon', 'frist', 'annet']}
-        createLabel={staff ? 'Ny oppgave' : 'Ny personlig aktivitet'} />
+        createLabel="Ny oppgave" />
     </>
   );
 }

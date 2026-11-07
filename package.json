@@ -2,7 +2,7 @@
   "name": "skolehub",
   "version": "0.1.0",
   "private": true,
-  "description": "SkoleHub – samler skoleinformasjon fra læringsplattformer i én database",
+  "description": "Brainbord – samler skoleinformasjon fra læringsplattformer i én database",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

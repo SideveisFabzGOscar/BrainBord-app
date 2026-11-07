@@ -158,3 +158,115 @@ do $$ declare paths text[]; begin
 end $$;
 reset role;
 \echo 'Alle RLS-tester bestått'
+
+-- ============ PERSONLIGE TILKOBLINGER ============
+\echo 'Personlige tilkoblinger:'
+select id as elev2 from auth.users where email = 'elev2@skolehub.test' \gset
+insert into user_connections (profile_id, platform, status, token_ciphertext, token_iv, account_label)
+values (:'elev', 'canvas', 'tilkoblet', 'KRYPTERT', 'iv', 'Emma'), (:'elev2', 'canvas', 'tilkoblet', 'KRYPTERT2', 'iv', 'Jonas');
+insert into external_items (profile_id, platform, kind, external_id, title) values
+  (:'elev', 'canvas', 'oppgave', '1', 'Emmas oppgave'), (:'elev2', 'canvas', 'oppgave', '1', 'Jonas sin oppgave');
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'elev', false) \gset _
+do $$ begin
+  assert (select count(*) from user_connections) = 1, 'Elev skal bare se egen tilkobling';
+  assert (select count(*) from external_items) = 1, 'Elev skal bare se egne hentede data';
+  assert (select title from external_items) = 'Emmas oppgave', 'Feil data';
+  begin
+    perform token_ciphertext from user_connections;
+    raise exception 'FEIL: elev kunne lese kryptert token';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into user_connections (profile_id, platform, status) values (auth.uid(), 'teams', 'tilkoblet');
+    raise exception 'FEIL: elev kunne skrive tilkobling direkte';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into external_items (profile_id, platform, kind, external_id, title) values (auth.uid(), 'canvas', 'oppgave', 'x', 'Falsk');
+    raise exception 'FEIL: elev kunne plante data';
+  exception when insufficient_privilege then null; end;
+  raise notice 'OK  tilkoblinger: bare egne data, tokens uleselige, ingen direkte skriving';
+end $$;
+select set_config('request.jwt.claim.sub', :'admin', false) \gset _
+do $$ begin
+  assert (select count(*) from external_items) = 0, 'Admin skal ikke se elevenes private Canvas-/Teams-data';
+  raise notice 'OK  tilkoblinger: heller ikke admin ser elevenes hentede data';
+end $$;
+select set_config('request.jwt.claim.sub', :'forelder', false) \gset _
+do $$ begin
+  assert (select count(*) from external_items) = 0, 'Forelder skal ikke se barnets private tilkoblingsdata';
+  raise notice 'OK  tilkoblinger: foresatt ser ikke barnets private tilkoblingsdata';
+end $$;
+reset role;
+delete from user_connections where profile_id = :'elev';
+do $$ begin
+  assert (select count(*) from audit_log where action = 'DISCONNECT') = 1, 'Frakobling ble ikke logget';
+  raise notice 'OK  frakobling logges';
+end $$;
+\echo 'Alle tester for tilkoblinger bestått'
+
+-- ============ «LØST»-MARKERINGER ============
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'elev', false) \gset _
+select set_config('t.elev2', :'elev2', false) \gset _
+insert into task_marks (profile_id, source, item_id) values (auth.uid(), 'canvas', '123');
+do $$ begin
+  assert (select count(*) from task_marks) = 1, 'Elev skal kunne huke av egen oppgave';
+  begin
+    insert into task_marks (profile_id, source, item_id) values (current_setting('t.elev2')::uuid, 'canvas', '999');
+    raise exception 'FEIL: elev kunne markere for en annen elev';
+  exception when insufficient_privilege then null; end;
+  delete from task_marks where item_id = '123';
+  assert (select count(*) from task_marks) = 0, 'Elev skal kunne fjerne egen markering';
+  raise notice 'OK  løst-markeringer: bare egne, kan legges til og fjernes';
+end $$;
+reset role;
+
+-- ============ EGEN STATUS (Canvas/Teams) ============
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'elev', false) \gset _
+insert into task_status (profile_id, source, item_id, status) values (auth.uid(), 'canvas', '55', 'pagar');
+do $$ begin
+  assert (select status from task_status where item_id = '55') = 'pagar', 'Elev skal kunne sette egen status';
+  update task_status set status = 'ikke_levert' where item_id = '55';
+  assert (select status from task_status where item_id = '55') = 'ikke_levert', 'Elev skal kunne endre egen status';
+  begin
+    insert into task_status (profile_id, source, item_id, status) values (current_setting('t.elev2')::uuid, 'canvas', '1', 'levert');
+    raise exception 'FEIL: elev kunne sette status for en annen elev';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into task_status (profile_id, source, item_id, status) values (auth.uid(), 'canvas', '2', 'vurdert');
+    raise exception 'FEIL: elev kunne sette status vurdert';
+  exception when check_violation then null; end;
+  raise notice 'OK  egen status: bare egne, aldri «vurdert»';
+end $$;
+reset role;
+
+-- ============ ELEV KAN IKKE LEGGE UT OPPGAVER ELLER PRØVER ============
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'elev', false) \gset _
+select set_config('t.matsub', :'mat_subject', false) \gset _
+do $$
+declare sch uuid := (select school_id from students where id = current_setting('t.emma')::uuid);
+begin
+  begin
+    insert into assignments (school_id, subject_id, student_id, title, activity_type, due_at, created_by)
+    values (sch, null, current_setting('t.emma')::uuid, 'Egen oppgave', 'annet', now() + interval '3 days', auth.uid());
+    raise exception 'FEIL: elev kunne opprette personlig oppgave';
+  exception when others then if sqlerrm like 'FEIL%' then raise; end if; end;
+  begin
+    insert into assignments (school_id, subject_id, title, activity_type, due_at, created_by)
+    values (sch, current_setting('t.matsub')::uuid, 'Klasseoppgave', 'innlevering', now() + interval '3 days', auth.uid());
+    raise exception 'FEIL: elev kunne legge ut oppgave til klassen';
+  exception when others then if sqlerrm like 'FEIL%' then raise; end if; end;
+  begin
+    insert into tests (school_id, subject_id, title, test_type, test_date, created_by)
+    values (sch, current_setting('t.matsub')::uuid, 'Prøve', 'prove', now() + interval '3 days', auth.uid());
+    raise exception 'FEIL: elev kunne legge ut prøve';
+  exception when others then if sqlerrm like 'FEIL%' then raise; end if; end;
+  begin
+    update assignments set title = 'Endret' where student_id = current_setting('t.emma')::uuid;
+    if found then raise exception 'FEIL: elev kunne endre personlig aktivitet'; end if;
+  end;
+  raise notice 'OK  elev: kan ikke legge ut oppgaver eller prøver';
+end $$;
+reset role;

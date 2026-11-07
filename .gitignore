@@ -6,3 +6,4 @@ node_modules
 next-env.d.ts
 supabase/.branches
 supabase/.temp
+demo/src.html

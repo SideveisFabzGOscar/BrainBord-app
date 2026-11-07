@@ -1,4 +1,4 @@
-import { classifyByTitle, isTestType, stableId } from '../normalize';
+import { classifyByTitle, httpsOrNull, isTestType, stableId } from '../normalize';
 import {
   IntegrationError, type AbsenceType, type ActivityType, type Connector, type ConnectorContext, type NormalizeResult,
 } from '../types';
@@ -51,6 +51,7 @@ const ALIASES: Record<string, string[]> = {
   type: ['type', 'aktivitetstype', 'kategori'],
   subject: ['fag', 'fagkode', 'subject', 'emne', 'course'],
   description: ['beskrivelse', 'description', 'info'],
+  url: ['lenke', 'url', 'link', 'nettadresse'],
   start: ['start', 'startdato', 'fra', 'startsat'],
   due: ['frist', 'dato', 'due', 'dueat', 'provedato', 'date', 'tidspunkt'],
   email: ['elevepost', 'epost', 'email', 'eleve-post', 'elevemail'],
@@ -127,7 +128,7 @@ export const csvConnector: Connector<CsvRaw> = {
 
 function normalizeActivities(raw: CsvRaw): NormalizeResult {
   const res: NormalizeResult = { activities: [], absences: [], errors: [] };
-  const c = Object.fromEntries(['id', 'title', 'type', 'subject', 'description', 'start', 'due'].map((k) => [k, columnIndex(raw.header, k)]));
+  const c = Object.fromEntries(['id', 'title', 'type', 'subject', 'description', 'start', 'due', 'url'].map((k) => [k, columnIndex(raw.header, k)]));
   if (c.title < 0 || c.due < 0) {
     res.errors.push({ message: 'CSV må ha kolonnene "tittel" og "frist" (eller "dato")' });
     return res;
@@ -151,7 +152,9 @@ function normalizeActivities(raw: CsvRaw): NormalizeResult {
       subjectCode: subject,
       startsAt: c.start >= 0 && r[c.start] ? parseNorwegianDate(r[c.start], '08:00') : null,
       dueAt,
+      url: c.url >= 0 ? httpsOrNull(r[c.url]) : null,
     });
+    if (c.url >= 0 && r[c.url] && !httpsOrNull(r[c.url])) res.errors.push({ row: line, message: 'Lenken ble ignorert: må være en https-adresse' });
   });
   return res;
 }

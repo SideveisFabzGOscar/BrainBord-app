@@ -1,7 +1,7 @@
 /**
  * Felles datastruktur for alle læringsplattformer.
  * Hver connector konverterer plattformens egne data til disse typene,
- * slik at resten av SkoleHub aldri trenger å vite hvor dataene kom fra.
+ * slik at resten av Brainbord aldri trenger å vite hvor dataene kom fra.
  */
 
 export type Platform = 'teams' | 'itslearning' | 'iskole' | 'canvas' | 'csv' | 'mock';
@@ -23,6 +23,10 @@ export interface NormalizedActivity {
   subjectName?: string | null;
   startsAt?: string | null; // ISO 8601
   dueAt: string;            // ISO 8601
+  /** Original https-lenke fra kilden (Canvas html_url, Graph webUrl, eller lenke i skolens eksport). Aldri konstruert. */
+  url?: string | null;
+  /** Fagets/emnets ID i kildesystemet */
+  courseExternalId?: string | null;
 }
 
 export interface NormalizedAbsence {

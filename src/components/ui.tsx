@@ -76,7 +76,7 @@ export function Modal({ open, onClose, title, children, wide }: {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-[2px]" onMouseDown={onClose}>
       <div ref={ref} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}
-        className={clsx('card max-h-[90vh] w-full animate-fade-in overflow-y-auto p-5 shadow-2xl', wide ? 'max-w-2xl' : 'max-w-md')}>
+        className={clsx('card shadow-float max-h-[90vh] w-full animate-fade-in overflow-y-auto p-5', wide ? 'max-w-2xl' : 'max-w-md')}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-semibold">{title}</h2>
           <button className="btn-ghost p-1.5" onClick={onClose} aria-label="Lukk"><X size={16} /></button>
@@ -99,7 +99,7 @@ export function Drawer({ open, onClose, title, children }: { open: boolean; onCl
   return (
     <div className="fixed inset-0 z-50 bg-black/30" onMouseDown={onClose}>
       <aside role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}
-        className="absolute right-0 top-0 h-full w-full max-w-md animate-slide-in overflow-y-auto border-l border-line bg-panel p-6 shadow-2xl">
+        className="absolute right-0 top-0 h-full w-full max-w-md animate-slide-in overflow-y-auto border-l border-line bg-panel p-6 shadow-float">
         <div className="mb-5 flex items-start justify-between gap-4">
           <h2 className="text-lg font-semibold leading-snug">{title}</h2>
           <button className="btn-ghost p-1.5" onClick={onClose} aria-label="Lukk"><X size={16} /></button>
@@ -115,7 +115,7 @@ export function useToast() {
   const [msg, setMsg] = useState<{ text: string; tone: 'ok' | 'err' } | null>(null);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 3500); return () => clearTimeout(t); } }, [msg]);
   const node = msg ? (
-    <div role="status" className={clsx('fixed bottom-5 right-5 z-[60] animate-fade-in rounded-lg px-4 py-2.5 text-sm text-white shadow-lg',
+    <div role="status" className={clsx('fixed bottom-5 right-5 z-[60] animate-fade-in rounded-lg px-4 py-2.5 text-sm text-white shadow-pop',
       msg.tone === 'ok' ? 'bg-zinc-900 dark:bg-zinc-700' : 'bg-red-600')}>{msg.text}</div>
   ) : null;
   return { toast: (text: string, tone: 'ok' | 'err' = 'ok') => setMsg({ text, tone }), toastNode: node };

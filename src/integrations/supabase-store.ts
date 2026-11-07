@@ -23,18 +23,18 @@ export class SupabaseSyncStore implements SyncStore {
     for (const chunk of chunks(ids, 200)) {
       if (kind === 'assignment') {
         const { data, error } = await this.db.from('assignments')
-          .select('id, external_id, title, description, due_at, starts_at, activity_type, subject_id')
+          .select('id, external_id, title, description, due_at, starts_at, activity_type, subject_id, source_url')
           .eq('school_id', schoolId).eq('source_platform', platform).in('external_id', chunk);
         if (error) throw error;
         data?.forEach((r) => out.set(r.external_id, { id: r.id, title: r.title, description: r.description, dueAt: r.due_at,
-          startsAt: r.starts_at, activityType: r.activity_type, subjectId: r.subject_id }));
+          startsAt: r.starts_at, activityType: r.activity_type, subjectId: r.subject_id, url: r.source_url }));
       } else {
         const { data, error } = await this.db.from('tests')
-          .select('id, external_id, title, description, test_date, test_type, subject_id')
+          .select('id, external_id, title, description, test_date, test_type, subject_id, source_url')
           .eq('school_id', schoolId).eq('source_platform', platform).in('external_id', chunk);
         if (error) throw error;
         data?.forEach((r) => out.set(r.external_id, { id: r.id, title: r.title, description: r.description, dueAt: r.test_date,
-          startsAt: null, activityType: r.test_type, subjectId: r.subject_id }));
+          startsAt: null, activityType: r.test_type, subjectId: r.subject_id, url: r.source_url }));
       }
     }
     return out;
@@ -46,6 +46,7 @@ export class SupabaseSyncStore implements SyncStore {
         school_id: r.schoolId, subject_id: r.subjectId, title: r.activity.title, description: r.activity.description ?? null,
         activity_type: r.activity.activityType, starts_at: r.activity.startsAt ?? null, due_at: r.activity.dueAt,
         source_platform: r.platform, external_id: r.activity.externalId,
+        source_url: r.activity.url ?? null, source_course_id: r.activity.courseExternalId ?? null,
       })), { onConflict: 'school_id,source_platform,external_id' });
       if (error) throw error;
     } else {
@@ -53,6 +54,7 @@ export class SupabaseSyncStore implements SyncStore {
         school_id: r.schoolId, subject_id: r.subjectId, title: r.activity.title, description: r.activity.description ?? null,
         test_type: r.activity.activityType === 'eksamen' ? 'eksamen' : 'prove', test_date: r.activity.dueAt,
         source_platform: r.platform, external_id: r.activity.externalId,
+        source_url: r.activity.url ?? null, source_course_id: r.activity.courseExternalId ?? null,
       })), { onConflict: 'school_id,source_platform,external_id' });
       if (error) throw error;
     }

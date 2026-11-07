@@ -41,17 +41,9 @@ export async function createActivity(input: {
     const due = toIso(input.date, input.time ?? null);
     const isTest = input.activityType === 'prove' || input.activityType === 'eksamen';
 
-    if (s.role === 'student' || s.role === 'parent') {
-      if (s.role === 'parent') return { ok: false, error: 'Foresatte kan ikke opprette aktiviteter' };
-      if (isTest) return { ok: false, error: 'Prøver registreres av lærer. Velg en annen type for egne aktiviteter.' };
-      const { data, error } = await supabase.from('assignments').insert({
-        school_id: s.schoolId, subject_id: input.subjectId || null, student_id: s.studentId, title,
-        description: input.description || null, activity_type: ASSIGNMENT_TYPES.includes(input.activityType) ? input.activityType : 'annet',
-        due_at: due, starts_at: input.startDate ? toIso(input.startDate, '08:00') : null, created_by: s.userId,
-      }).select('id').single();
-      if (error) return fail(error);
-      revalidatePath('/', 'layout');
-      return { ok: true, id: data.id };
+    // Bare lærer og admin kan legge ut oppgaver og prøver. Databasen (RLS) håndhever det samme.
+    if (s.role !== 'teacher' && s.role !== 'admin') {
+      return { ok: false, error: 'Bare lærere kan legge ut oppgaver og prøver' };
     }
 
     if (!input.subjectId) return { ok: false, error: 'Velg fag' };
@@ -188,6 +180,75 @@ export async function updateMyName(fullName: string): Promise<ActionResult> {
   const supabase = await createClient();
   const { error } = await supabase.from('profiles').update({ full_name: name }).eq('id', s.userId);
   if (error) return fail(error);
+  revalidatePath('/', 'layout');
+  return { ok: true };
+}
+
+/**
+ * Huk av / fjern «Løst» i gjennomføringsplanen. Lagres per kilde-oppføring,
+ * så en oppgave som finnes i både Canvas og Teams markeres i begge.
+ * Endrer ikke innleveringsstatus i kildesystemet.
+ */
+export async function setSolved(refs: { source: string; id: string }[], solved: boolean): Promise<ActionResult> {
+  const s = await getSession();
+  const valid = refs.filter((r) => ['skolehub', 'canvas', 'teams'].includes(r.source) && typeof r.id === 'string' && r.id.length > 0 && r.id.length < 200);
+  if (!valid.length || valid.length > 10) return { ok: false, error: 'Ugyldig oppgave' };
+  const supabase = await createClient();
+  if (solved) {
+    const { error } = await supabase.from('task_marks').upsert(
+      valid.map((r) => ({ profile_id: s.userId, source: r.source, item_id: r.id })), { onConflict: 'profile_id,source,item_id', ignoreDuplicates: true });
+    if (error) return fail(error);
+  } else {
+    for (const r of valid) {
+      const { error } = await supabase.from('task_marks').delete().eq('profile_id', s.userId).eq('source', r.source).eq('item_id', r.id);
+      if (error) return fail(error);
+    }
+  }
+  revalidatePath('/', 'layout');
+  return { ok: true };
+}
+
+/**
+ * Elev endrer status på en oppgave i «Mine oppgaver»: Ikke levert / Pågår / Levert.
+ *  - Brainbord-oppgaver: innleveringen oppdateres (samme som i årshjulet).
+ *  - Canvas/Teams: lagres som elevens egen status i Brainbord (kildesystemet endres ikke).
+ * Vurderte oppgaver (satt av lærer) kan ikke endres.
+ */
+export async function setTaskStatus(refs: { source: string; id: string }[], status: string): Promise<ActionResult> {
+  const s = await getSession();
+  if (s.role !== 'student' || !s.studentId) return { ok: false, error: 'Bare elever kan endre status på egne oppgaver' };
+  if (!['ikke_levert', 'pagar', 'levert'].includes(status)) return { ok: false, error: 'Ugyldig status' };
+  const valid = refs.filter((r) => ['skolehub', 'canvas', 'teams'].includes(r.source) && typeof r.id === 'string' && r.id.length > 0 && r.id.length < 200);
+  if (!valid.length || valid.length > 10) return { ok: false, error: 'Ugyldig oppgave' };
+  const supabase = await createClient();
+
+  for (const r of valid.filter((x) => x.source === 'skolehub')) {
+    const { data: asg } = await supabase.from('assignments').select('id').eq('id', r.id).maybeSingle();
+    if (!asg) continue; // prøver har ingen innlevering eleven kan endre
+    const { data: cur } = await supabase.from('submissions').select('status').eq('assignment_id', r.id).eq('student_id', s.studentId).maybeSingle();
+    if (cur?.status === 'fullfort') return { ok: false, error: 'Oppgaven er vurdert av lærer og kan ikke endres.' };
+    const { error } = await supabase.from('submissions').upsert({
+      student_id: s.studentId, assignment_id: r.id,
+      status: status === 'ikke_levert' ? 'ikke_startet' : status,
+      submitted_at: status === 'levert' ? new Date().toISOString() : null,
+    }, { onConflict: 'student_id,assignment_id' });
+    if (error) return fail(error);
+  }
+  // Ikke levert / Pågår = uløst: fjern eventuell «Løst»-markering, så oppgaven
+  // kommer tilbake i bjella, humørfjeset og gjennomføringsplanen.
+  if (status !== 'levert') {
+    for (const r of valid) {
+      const { error } = await supabase.from('task_marks').delete().eq('profile_id', s.userId).eq('source', r.source).eq('item_id', r.id);
+      if (error) return fail(error);
+    }
+  }
+  const ext = valid.filter((x) => x.source !== 'skolehub');
+  if (ext.length) {
+    const { error } = await supabase.from('task_status').upsert(
+      ext.map((r) => ({ profile_id: s.userId, source: r.source, item_id: r.id, status, updated_at: new Date().toISOString() })),
+      { onConflict: 'profile_id,source,item_id' });
+    if (error) return fail(error);
+  }
   revalidatePath('/', 'layout');
   return { ok: true };
 }

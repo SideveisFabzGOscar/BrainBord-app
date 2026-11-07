@@ -1,5 +1,5 @@
 import { clientCredentialsToken, requestJson } from '../http';
-import { classifyByTitle, isTestType, stripHtml } from '../normalize';
+import { classifyByTitle, httpsOrNull, isTestType, stripHtml } from '../normalize';
 import {
   IntegrationError, type AbsenceType, type Connector, type ConnectorContext, type NormalizeResult, type Platform,
 } from '../types';
@@ -21,14 +21,14 @@ import {
  * Inntil avtale foreligger, rapporterer connectoren NO_API_ACCESS
  * (den later aldri som den er tilkoblet). Bruk CSV-eksport fra plattformen.
  */
-type FieldMap = Partial<Record<'id' | 'title' | 'description' | 'due' | 'start' | 'subject' | 'type'
+type FieldMap = Partial<Record<'id' | 'title' | 'description' | 'due' | 'start' | 'subject' | 'type' | 'url'
   | 'email' | 'date' | 'from' | 'to' | 'hours' | 'absenceType' | 'documented', string>>;
 
 export interface PartnerRaw { activities: Record<string, unknown>[]; absences: Record<string, unknown>[]; fields: FieldMap }
 
 const DEFAULT_FIELDS: FieldMap = {
   id: 'id', title: 'title', description: 'description', due: 'deadline', start: 'start', subject: 'courseCode',
-  type: 'type', email: 'studentEmail', date: 'date', from: 'from', to: 'to', hours: 'hours',
+  type: 'type', url: 'url', email: 'studentEmail', date: 'date', from: 'from', to: 'to', hours: 'hours',
   absenceType: 'absenceType', documented: 'documented',
 };
 
@@ -91,7 +91,7 @@ export function createPartnerRestConnector(opts: {
         res.activities.push({
           externalId: `${opts.platform}:${id}`, kind: isTestType(type) ? 'test' : 'assignment', activityType: type,
           title, description: stripHtml(s(o, f.description)), subjectCode: s(o, f.subject),
-          startsAt: s(o, f.start), dueAt: new Date(due).toISOString(),
+          startsAt: s(o, f.start), dueAt: new Date(due).toISOString(), url: httpsOrNull(s(o, f.url)),
         });
       });
       raw.absences.forEach((o, i) => {

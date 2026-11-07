@@ -28,7 +28,7 @@ export default async function ProverPage() {
       </div>
       <ActivityTable items={tests} role={s.role} managed={managed} types={['prove', 'eksamen']}
         subjects={subjects.map((x) => ({ id: x.id, name: x.name, code: x.code, className: staff ? x.className : null }))}
-        createLabel={staff ? 'Ny prøve' : 'Ny personlig aktivitet'} />
+        createLabel="Ny prøve" />
     </>
   );
 }

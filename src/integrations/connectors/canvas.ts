@@ -1,5 +1,5 @@
 import { nextLink, requestJson } from '../http';
-import { classifyByTitle, isTestType, stripHtml } from '../normalize';
+import { classifyByTitle, httpsOrNull, isTestType, stripHtml } from '../normalize';
 import { IntegrationError, type Connector, type ConnectorContext, type NormalizeResult } from '../types';
 
 /**
@@ -11,7 +11,7 @@ interface CanvasCourse { id: number; name: string; course_code?: string }
 interface CanvasAssignment {
   id: number; name: string; description?: string | null;
   due_at?: string | null; unlock_at?: string | null;
-  is_quiz_assignment?: boolean; submission_types?: string[]; published?: boolean;
+  is_quiz_assignment?: boolean; submission_types?: string[]; published?: boolean; html_url?: string;
 }
 export interface CanvasRaw { courses: { course: CanvasCourse; assignments: CanvasAssignment[] }[] }
 
@@ -68,6 +68,7 @@ export const canvasConnector: Connector<CanvasRaw> = {
           subjectName: course.name,
           startsAt: a.unlock_at ?? null,
           dueAt: a.due_at,
+          url: httpsOrNull(a.html_url), courseExternalId: String(course.id),
         });
       }
     }

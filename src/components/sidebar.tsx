@@ -5,13 +5,18 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import {
-  BookOpen, CalendarRange, ClipboardCheck, FileCheck2, FileLock2, GraduationCap, LayoutDashboard, ListTodo, Menu,
-  PlugZap, Settings, UserX, X,
+  BookOpen, CalendarRange, ClipboardCheck, FileCheck2, FileLock2, GraduationCap, Layers, LayoutDashboard, ListChecks, ListTodo, Menu,
+  PlugZap, Route, Settings, Sparkles, UserX, Workflow, X,
 } from 'lucide-react';
 import type { Role } from '@/lib/meta';
 
-const NAV = [
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; onlyFor?: Role[]; hideFor?: Role[] }[] = [
+  { href: '/classflow', label: 'ClassFlow', icon: Workflow, onlyFor: ['teacher', 'admin'] as Role[] },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/samlet', label: 'Samlet oversikt', icon: Layers },
+  { href: '/mine-oppgaver', label: 'Mine oppgaver', icon: ListChecks },
+  { href: '/assistent', label: 'Assistent', icon: Sparkles },
+  { href: '/plan', label: 'Gjennomføringsplan', icon: Route, onlyFor: ['student', 'parent'] as Role[] },
   { href: '/arshjul', label: 'Årshjul', icon: CalendarRange },
   { href: '/oppgaver', label: 'Oppgaver', icon: ListTodo },
   { href: '/innleveringer', label: 'Innleveringer', icon: FileCheck2 },
@@ -19,7 +24,7 @@ const NAV = [
   { href: '/fravaer', label: 'Fravær', icon: UserX },
   { href: '/dokumentasjon', label: 'Dokumentasjon', icon: FileLock2, hideFor: ['teacher'] as Role[] },
   { href: '/fag', label: 'Fag', icon: BookOpen },
-  { href: '/integrasjoner', label: 'Integrasjoner', icon: PlugZap, onlyFor: ['admin', 'teacher'] as Role[] },
+  { href: '/integrasjoner', label: 'Integrasjoner', icon: PlugZap },
   { href: '/innstillinger', label: 'Innstillinger', icon: Settings },
 ];
 
@@ -34,7 +39,7 @@ export function Sidebar({ role, schoolName }: { role: Role; schoolName: string |
       <div className="mb-5 flex items-center gap-2.5 px-2 pt-1">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white"><GraduationCap size={18} /></div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold tracking-tight">SkoleHub</div>
+          <div className="text-sm font-semibold tracking-tight">{role === 'teacher' || role === 'admin' ? 'ClassFlow' : 'Brainbord'}</div>
           <div className="truncate text-[11px] text-muted">{schoolName ?? '–'}</div>
         </div>
       </div>
@@ -60,7 +65,7 @@ export function Sidebar({ role, schoolName }: { role: Role; schoolName: string |
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-line bg-panel/60 lg:block">{nav}</aside>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/40 lg:hidden" onClick={() => setOpen(false)}>
-          <aside className="h-full w-64 animate-fade-in border-r border-line bg-panel" onClick={(e) => e.stopPropagation()}>
+          <aside className="shadow-float h-full w-64 animate-fade-in border-r border-line bg-panel" onClick={(e) => e.stopPropagation()}>
             <button className="btn-ghost absolute left-52 top-3 p-2" onClick={() => setOpen(false)} aria-label="Lukk meny"><X size={18} /></button>
             {nav}
           </aside>
