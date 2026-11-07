@@ -1,0 +1,27 @@
+# Minimal Supabase CLI-konfig for lokal utvikling. Kjør `npx supabase start`.
+project_id = "skolehub"
+
+[api]
+port = 54321
+schemas = ["public"]
+max_rows = 2000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+port = 54323
+
+[auth]
+site_url = "http://localhost:3000"
+# Ingen åpen registrering: kontoer opprettes av skoleadministrator
+enable_signup = false
+jwt_expiry = 3600
+
+[auth.email]
+enable_signup = false
