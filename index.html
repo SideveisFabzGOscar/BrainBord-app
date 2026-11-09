@@ -1480,14 +1480,14 @@ const SAMPLE=(()=>{const d=n=>{const x=new Date(Date.now()+n*DAY);return `${Stri
  return `id;tittel;type;fag;frist;beskrivelse\nA-101;Novelleanalyse;innlevering;NOR1260;${d(10)} 23:59;600\u2013800 ord\nA-102;Kapittelpr\u00f8ve 4: vektorer;pr\u00f8ve;MAT1001;${d(17)} 08:30;Kap. 4\nA-102;Kapittelpr\u00f8ve 4: vektorer;pr\u00f8ve;MAT1001;${d(17)} 08:30;Duplikat i filen\nA-103;Presentasjon: industrialiseringen;presentasjon;HIS1010;${d(24)} 10:00;\nA-104;Oppgave i ukjent fag;oppgave;XYZ999;${d(5)};\nA-105;Feil dato;oppgave;NOR1260;32.13.2026;`})();
 
 /* ================= Samling p\u00e5 tvers av kilder (samme logikk som i appen) ================= */
-DB.conns = DB.conns || { canvas: 'ikke_tilkoblet', teams: 'ikke_tilkoblet' };
+DB.conns = DB.conns || { canvas: 'ikke_tilkoblet', itslearning: 'ikke_tilkoblet', teams: 'ikke_tilkoblet' };
 DB.ext = DB.ext || [];
 DB.solved = DB.solved || {};
 DB.myStat = DB.myStat || {};
 DB.myStatAt = DB.myStatAt || {};
 DB.acts.forEach((a, i) => { if (a.submittedAt && Date.parse(a.submittedAt) > Date.now()) a.submittedAt = new Date(Date.now() - (1 + (i % 9)) * 0.37 * DAY).toISOString(); }); // n\u00e5r eleven satte status (brukes for \u00absist levert\u00bb) // Canvas/Teams-ID -> elevens egen status (ikke_levert/pagar/levert) // kilde-ID -> tidspunkt eleven huket av \u00abL\u00f8st\u00bb
-const SRC = { skolehub: 'BrainBord', canvas: 'Canvas', teams: 'Teams', iskole: 'iSkole' };
-const SRC_COLOR = { skolehub: 'var(--muted)', canvas: '#c2352b', teams: '#5b5fc7', iskole: 'var(--accent)' };
+const SRC = { skolehub: 'BrainBord', canvas: 'Canvas', itslearning: 'itslearning', teams: 'Teams', iskole: 'iSkole' };
+const SRC_COLOR = { skolehub: 'var(--muted)', canvas: '#c2352b', itslearning: '#c4570f', teams: '#5b5fc7', iskole: 'var(--accent)' };
 const srcChip = (s, via) => `<span class="chip" style="background:color-mix(in srgb,${SRC_COLOR[s]} 14%,transparent);color:${SRC_COLOR[s]}">${SRC[s]}${via ? ` <span style="font-weight:400;opacity:.75">\u00b7 ${esc(via)}</span>` : ''}</span>`;
 const SUB = { pagar: ['P\u00e5g\u00e5r', 'st-pagar'], levert: ['Levert', 'st-levert'], vurdert: ['Vurdert', 'st-fullfort'], ikke_levert: ['Ikke levert', 'st-ikke_startet'], forfalt: ['Forfalt', 'ds-ikke_dokumentert'] };
 const subChip = (s) => s ? `<span class="chip ${SUB[s][1]}">${SUB[s][0]}</span>` : '';
@@ -1518,7 +1518,7 @@ function unified() {
     const own = g.find((x) => x.mine);
     const status = own ? own.status : st.includes('vurdert') ? 'vurdert' : st.includes('levert') ? 'levert' : st.includes('pagar') ? 'pagar' : Date.parse(g[0].due) < now ? 'forfalt' : 'ikke_levert';
     // beste lenke: direkte fra Canvas/Teams > BrainBord-visning
-    const ext1 = g.find((x) => x.source === 'canvas' || x.source === 'teams');
+    const ext1 = g.find((x) => x.source === 'canvas' || x.source === 'itslearning' || x.source === 'teams');
     return { key: g.map((x) => x.id).join('+'), title: g[0].title, course: g.find((x) => x.course)?.course ?? null, due: g[0].due, kind: g.some((x) => x.kind === 'prove') ? 'prove' : 'oppgave',
       // Huket av som \u00abL\u00f8st\u00bb i planen = levert i oversiktene
       ...(() => { const sv = g.map((x) => DB.solved[x.id]).find(Boolean);
@@ -1548,8 +1548,9 @@ function showOpen(key) {
   }
   const realSrc = t.sources.find((x) => x.source === o.platform && x.real);
   if (realSrc) {
-    if (realSrc.url && /^https:\/\/[A-Za-z0-9.-]+\.instructure\.com\//.test(realSrc.url)) window.open(realSrc.url, '_blank', 'noopener,noreferrer');
-    else openOverlay('modal', t.title, `<p class="sub" style="margin-top:12px">Canvas sendte ingen direkte lenke for denne. Finn den i Canvas-kalenderen.</p>`);
+    const F = FEED[o.platform] || FEED.canvas;
+    if (realSrc.url && F.linkRx.test(realSrc.url)) window.open(realSrc.url, '_blank', 'noopener,noreferrer');
+    else openOverlay('modal', t.title, `<p class="sub" style="margin-top:12px">${F.name} sendte ingen direkte lenke for denne. Finn den i ${F.name}-kalenderen.</p>`);
     return;
   }
   const name = o.platform === 'canvas' ? 'Canvas' : 'Teams';
@@ -1592,10 +1593,29 @@ function exampleItems(platform) {
 const CANVAS_FN = 'https://tkvaknrxvutcanfqbonb.supabase.co/functions/v1/canvas-feed';
 const SUPA_PUBLIC_KEY = 'sb_publishable_s5Q2AcmF2jpsHB0gczzgJA_e9Qhmi6Y'; // offentlig n\u00f8kkel, trygg \u00e5 ha i appen
 const CANVAS_FEED_RX = /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.instructure\.com\/feeds\/calendars\/user_[A-Za-z0-9_-]+\.ics$/;
-let canvasSyncing = false;
+// itslearning: iCal-lenken fra Kalender \u2192 \u00ab\u2026\u00bb \u2192 \u00abAbonner\u00bb. Bare itslearning.com-adresser (samme regel som p\u00e5 serveren).
+const ITS_FEED_RX = /^https:\/\/([A-Za-z0-9-]+\.)*itslearning\.com\/[^\s<>"'`]{1,1900}$/;
+let canvasSyncing = false; const feedSyncing = {};
+/* Kalenderlenker fra l\u00e6ringsplattformene. Canvas og itslearning virker likt: en personlig iCal-lenke hentes via serverfunksjonen. */
+const FEED = {
+  canvas: { name: 'Canvas', label: 'Canvas LMS', keys: ['canvasFeed', 'canvasFile', 'canvasLastSync', 'canvasError'], rx: CANVAS_FEED_RX, linkRx: /^https:\/\/[A-Za-z0-9.-]+\.instructure\.com\//,
+    linkName: 'Kalenderstr\u00f8m', placeholder: 'https://skolen.instructure.com/feeds/calendars/user_\u2026.ics', fileName: 'user_\u2026.ics',
+    steps: ['Logg inn i Canvas i nettleseren (ikke Canvas-appen).', 'Trykk <b>Kalender</b> i menyen til venstre.', 'Nederst til h\u00f8yre: trykk <b>Kalenderstr\u00f8m</b>. Er vinduet smalt, ligger den nederst p\u00e5 siden.', 'Kopier lenken. Den slutter p\u00e5 <code>.ics</code>.'],
+    bad: 'Dette ser ikke ut som en Kalenderstr\u00f8m-lenke. Den skal se slik ut: https://skolen.instructure.com/feeds/calendars/user_\u2026.ics',
+    provides: ['Fag, oppgaver og frister', 'Innleveringsstatus', 'Quiz, karakterer/poeng', 'Kunngj\u00f8ringer', 'Direkte lenke til hver oppgave'],
+    liveProvides: ['Oppgaver, pr\u00f8ver og frister fra kalenderen', 'Fag (fra Canvas-kalenderen)', 'Direkte lenke til hver oppgave', 'Henter nye frister automatisk'] },
+  itslearning: { name: 'itslearning', label: 'itslearning', keys: ['itsFeed', 'itsFile', 'itsLastSync', 'itsError'], rx: ITS_FEED_RX, linkRx: /^https:\/\/([A-Za-z0-9-]+\.)*itslearning\.com\//,
+    linkName: 'iCal-lenke', placeholder: 'https://skolen.itslearning.com/\u2026', fileName: '.ics',
+    steps: ['Logg inn i itslearning i nettleseren.', 'Trykk <b>Kalender</b> i hovedmenyen.', 'Trykk <b>\u2026</b> (eller tannhjulet) \u00f8verst til h\u00f8yre og velg <b>Abonner</b> (\u00abAbonner p\u00e5 iCal-feed\u00bb).', 'Kopier lenken som vises. Den g\u00e5r til <code>itslearning.com</code>.'],
+    bad: 'Dette ser ikke ut som en kalenderlenke fra itslearning. Den skal starte med https:// og g\u00e5 til itslearning.com.',
+    provides: ['Oppgaver, pr\u00f8ver og frister fra kalenderen', 'Fag og emner du har stjernemerket', 'Henter nye frister automatisk'],
+    liveProvides: ['Oppgaver, pr\u00f8ver og frister fra kalenderen', 'Fag og emner du har stjernemerket', 'Henter nye frister automatisk'] },
+};
+const fkeys = (p) => { const [feed, file, last, err] = FEED[p].keys; return { feed, file, last, err }; };
+const feedOf = (p) => FEED[p] ? DB[fkeys(p).feed] : null, fileOf = (p) => FEED[p] ? DB[fkeys(p).file] : null;
 /* Leser en Canvas-kalenderfil (.ics) direkte i nettleseren. Brukes n\u00e5r eleven laster opp fila,
    f.eks. i forh\u00e5ndsvisningen p\u00e5 claude.ai, som ikke kan kontakte andre servere. Samme regler som canvas-feed. */
-function parseCanvasIcs(text) {
+function parseCanvasIcs(text, src = 'canvas') {
   const zoned = (y, mo, d, h, mi, s, tz) => {
     const guess = Date.UTC(y, mo - 1, d, h, mi, s);
     try {
@@ -1620,8 +1640,9 @@ function parseCanvasIcs(text) {
         const when = cur.DTSTART ? date(cur.DTSTART.v, cur.DTSTART.p) : cur.DTEND ? date(cur.DTEND.v, cur.DTEND.p) : null;
         if (sum && uid && when && !isNaN(when)) {
           const cm = /^(.*?)\s*\[([^\]]+)\]\s*$/.exec(sum), title = (cm ? cm[1] : sum).slice(0, 200), url = cur.URL && /^https:\/\//.test(cur.URL.v) ? cur.URL.v.slice(0, 500) : null;
-          const assignment = /assignment/i.test(uid) || /\/assignments\/|\/quizzes\//.test(url || ''), test = /pr\u00f8ve|prove|test|quiz|eksamen|exam|tentamen/i.test(title) || /\/quizzes\//.test(url || '');
-          out.push({ uid: uid.slice(0, 200), title, course: cm ? cm[2].slice(0, 120) : null, due: when.toISOString(), url, kind: test ? 'prove' : assignment ? 'oppgave' : 'annet' });
+          const desc = cur.DESCRIPTION ? unesc(cur.DESCRIPTION.v).slice(0, 2000) : '', cat = cur.CATEGORIES ? unesc(cur.CATEGORIES.v).split(',')[0].trim().slice(0, 120) : '';
+          const k = icsKind(src, { uid, title, url, desc });
+          out.push({ uid: uid.slice(0, 200), title, course: cm ? cm[2].slice(0, 120) : (src === 'itslearning' && cat ? cat : null), due: when.toISOString(), url, kind: k });
         }
       }
       cur = null; continue;
@@ -1634,21 +1655,29 @@ function parseCanvasIcs(text) {
   }
   return out;
 }
+// Hva slags hendelse er det? Samme regler som serverfunksjonen (canvas-ics.ts).
+function icsKind(src, { uid, title, url, desc }) {
+  const test = /pr\u00f8ve|prove|test|quiz|eksamen|exam|tentamen/i.test(title) || /\/quizzes\//.test(url || '');
+  if (test) return 'prove';
+  if (src === 'itslearning') return /innlever|oppgave|frist|levere|leveres|lekse|prosjekt|rapport|presentasjon|assignment|deadline|\btask/i.test(title + ' ' + (desc || '')) || /task|assignment/i.test((url || '') + ' ' + uid) ? 'oppgave' : 'annet';
+  return /assignment/i.test(uid) || /\/assignments\/|\/quizzes\//.test(url || '') ? 'oppgave' : 'annet';
+}
 function inPreview() { let framed = true; try { framed = window.self !== window.top; } catch (x) { /* blokkert = innebygd */ } return framed || location.protocol === 'file:'; }
-async function readCanvasFile(file) {
+async function readCanvasFile(file, src = 'canvas') {
   if (!file) throw new Error('Velg kalenderfila f\u00f8rst.');
   if (file.size > 5e6) throw new Error('Fila er for stor (over 5 MB). Er det riktig fil?');
   const text = await file.text();
   if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Dette er ikke en kalenderfil. Velg fila som slutter p\u00e5 .ics.');
-  return parseCanvasIcs(text);
+  return parseCanvasIcs(text, src);
 }
-async function fetchCanvasFeed(url) {
+async function fetchCanvasFeed(url, src = 'canvas') {
+  const NM = FEED[src].name;
   let res;
   try {
     res = await fetch(CANVAS_FN, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPA_PUBLIC_KEY }, body: JSON.stringify({ url }) });
   } catch (e) {
     // Ingen svar i det hele tatt. I forh\u00e5ndsvisningen p\u00e5 claude.ai blokkeres all kontakt med andre servere.
-    if (inPreview()) throw new Error('Forh\u00e5ndsvisningen her kan ikke kontakte andre servere. \u00c5pne BrainBord p\u00e5 brainbord.netlify.app for \u00e5 hente ekte frister fra Canvas.');
+    if (inPreview()) throw new Error(`Forh\u00e5ndsvisningen her kan ikke kontakte andre servere. \u00c5pne BrainBord p\u00e5 brainbord.netlify.app for \u00e5 hente ekte frister fra ${NM}.`);
     if (!navigator.onLine) throw new Error('Du er ikke koblet til internett. Koble til og pr\u00f8v igjen.');
     throw new Error('Fikk ikke svar fra BrainBord-serveren (canvas-feed). Pr\u00f8v igjen om litt. Skjer det igjen: funksjonen canvas-feed m\u00e5 v\u00e6re lagt ut i Supabase med \u00abVerify JWT\u00bb sl\u00e5tt av.');
   }
@@ -1658,49 +1687,54 @@ async function fetchCanvasFeed(url) {
   if (!res.ok || !body || !body.ok) throw new Error((body && body.error) || `Noe gikk galt (${res.status}). Pr\u00f8v igjen.`);
   return body.events || [];
 }
-function realCanvasItems(events) {
+function realCanvasItems(events, src = 'canvas') {
   const now = Date.now(), from = now - 7 * DAY; // fristene siste 7 dager og fremover
   return events.filter((e) => e.kind !== 'annet' && Date.parse(e.due) >= from).map((e) => ({
-    platform: 'canvas', id: 'canvas-r-' + hsh(e.uid).toString(36), extId: e.uid, courseId: e.course || '',
+    platform: src, id: src + '-r-' + hsh(e.uid).toString(36), extId: e.uid, courseId: e.course || '',
     title: e.title, course: e.course || null, due: e.due, kind: e.kind === 'prove' ? 'prove' : 'oppgave',
     type: e.kind === 'prove' ? 'prove' : /lekse/i.test(e.title) ? 'lekse' : 'innlevering',
     status: 'ikke_levert', grade: null, example: false, real: true, url: e.url || null, submittedAt: null }));
 }
-async function syncCanvasReal(manual) {
-  if (!DB.canvasFeed || canvasSyncing) return;
-  canvasSyncing = true; if (manual) render();
+async function syncFeed(p, manual) {
+  const K = fkeys(p);
+  if (!DB[K.feed] || feedSyncing[p]) return;
+  feedSyncing[p] = true; if (p === 'canvas') canvasSyncing = true; if (manual) render();
   try {
-    const items = realCanvasItems(await fetchCanvasFeed(DB.canvasFeed));
-    DB.ext = DB.ext.filter((x) => x.platform !== 'canvas').concat(items);
-    DB.conns.canvas = 'tilkoblet'; DB.canvasLastSync = new Date().toISOString(); DB.canvasError = null; save();
-    if (manual) toast(`Hentet ${items.length} ${items.length === 1 ? 'frist' : 'frister'} fra Canvas`);
+    const items = realCanvasItems(await fetchCanvasFeed(DB[K.feed], p), p);
+    DB.ext = DB.ext.filter((x) => x.platform !== p).concat(items);
+    DB.conns[p] = 'tilkoblet'; DB[K.last] = new Date().toISOString(); DB[K.err] = null; save();
+    if (manual) toast(`Hentet ${items.length} ${items.length === 1 ? 'frist' : 'frister'} fra ${FEED[p].name}`);
   } catch (e) {
-    DB.canvasError = e.message; save(); if (manual) toast(e.message, true);
-  } finally { canvasSyncing = false; render(); }
+    DB[K.err] = e.message; save(); if (manual) toast(e.message, true);
+  } finally { feedSyncing[p] = false; if (p === 'canvas') canvasSyncing = false; render(); }
 }
+const syncCanvasReal = (manual) => syncFeed('canvas', manual);
 
 function connCard(p) {
   const st = p === 'iskole' ? 'ikke_tilkoblet' : DB.conns[p];
-  const label = { iskole: 'iSkole', canvas: 'Canvas LMS', teams: 'Microsoft Teams for Education' }[p];
-  const provides = { iskole: ['Frav\u00e6r (n\u00e5r skolen importerer det)'], canvas: ['Fag, oppgaver og frister', 'Innleveringsstatus', 'Quiz, karakterer/poeng', 'Kunngj\u00f8ringer', 'Direkte lenke til hver oppgave'],
-    teams: ['Klasser og oppgaver', 'Innleveringsstatus', 'Direkte lenke til hver oppgave'] }[p];
-  const realC = p === 'canvas' && (DB.canvasFeed || DB.canvasFile);
+  const F = FEED[p], K = F ? fkeys(p) : null;
+  const label = F ? F.label : { iskole: 'iSkole', teams: 'Microsoft Teams for Education' }[p];
+  const provides = F ? (LIVE_MODE ? F.liveProvides : F.provides) : { iskole: ['Frav\u00e6r (n\u00e5r skolen importerer det)'], teams: ['Klasser og oppgaver', 'Innleveringsstatus', 'Direkte lenke til hver oppgave'] }[p];
+  const realC = !!(F && (DB[K.feed] || DB[K.file]));
+  const teamsLater = LIVE_MODE && p === 'teams';
   const badge = st === 'tilkoblet' ? `<span class="badge-int bi-ok">${realC ? 'Tilkoblet' : 'Tilkoblet (eksempel)'}</span>` : st === 'feilet' ? `<span class="badge-int" style="background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)">Tilkobling feilet</span>` : `<span class="badge-int bi-ikke">Ikke tilkoblet</span>`;
   const n = DB.ext.filter((x) => x.platform === p).length;
   return `<div class="card pad int"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="t1" style="font-size:15px">${label}</div>
-    <div class="t2">${st === 'tilkoblet' ? (realC ? `${n} frister fra din Canvas \u00b7 ${DB.canvasFile ? 'fra opplastet fil ' + fmtDT(DB.canvasFile.at) : canvasSyncing ? 'henter \u2026' : DB.canvasLastSync ? 'sist hentet ' + fmtDT(DB.canvasLastSync) : 'ikke hentet enn\u00e5'}` : `${n} elementer \u00b7 eksempelkonto`) : p === 'iskole' ? 'Ingen offentlig tilgang' : 'Aldri synkronisert'}</div></div>${badge}</div>
-    ${realC && DB.canvasError ? `<div class="note" style="background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--ink)">${esc(DB.canvasError)}</div>` : ''}
+    <div class="t2">${st === 'tilkoblet' ? (realC ? `${n} frister fra din ${F.name} \u00b7 ${DB[K.file] ? 'fra opplastet fil ' + fmtDT(DB[K.file].at) : feedSyncing[p] ? 'henter \u2026' : DB[K.last] ? 'sist hentet ' + fmtDT(DB[K.last]) : 'ikke hentet enn\u00e5'}` : `${n} elementer \u00b7 eksempelkonto`) : p === 'iskole' ? 'Ingen offentlig tilgang' : teamsLater ? 'Kommer senere' : 'Aldri synkronisert'}</div></div>${badge}</div>
+    ${realC && DB[K.err] ? `<div class="note" style="background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--ink)">${esc(DB[K.err])}</div>` : ''}
     <ul class="sub" style="margin:0;padding-left:18px;line-height:1.6">${provides.map((x) => `<li>${x}</li>`).join('')}</ul>
     ${p === 'iskole' ? `<div class="miss">iSkole har ingen dokumentert API eller godkjent elev-innlogging for andre apper. Skoleeier m\u00e5 inng\u00e5 avtale med leverand\u00f8ren (Barman Hanssen AS). BrainBord ber aldri om iSkole-passordet ditt.</div>
       <div><button class="btn" disabled>Koble til</button></div>`
     : role() === 'parent' ? '<p class="sub" style="margin:0">Foresatte har lesetilgang. Bare eleven kan koble til eller fra egne kontoer.</p>'
+    : teamsLater && st !== 'tilkoblet' ? `<div class="miss">Teams krever at skolen godkjenner BrainBord i Microsoft 365. Det kommer senere.</div><div><button class="btn" disabled>Koble til</button></div>`
     : `<div style="display:flex;gap:8px;flex-wrap:wrap">${st === 'tilkoblet'
       ? `<button class="btn pri" data-conn-sync="${p}">${ico('sync', 15)} Synkroniser</button><button class="btn" data-conn-disc="${p}">Koble fra</button>`
       : `<button class="btn pri" data-conn-connect="${p}">Koble til</button>`}</div>`}</div>`;
 }
 function connectDemo(p) {
   if (role() === 'parent') return;
-  if (p === 'canvas') return connectCanvasReal();
+  if (FEED[p]) return connectFeed(p);
+  if (LIVE_MODE) return;   // ingen eksempelkontoer p\u00e5 den ekte nettsiden
   const name = p === 'canvas' ? 'Canvas' : 'Microsoft';
   openOverlay('modal', `Koble til ${p === 'canvas' ? 'Canvas' : 'Teams'}`, `
     <p style="font-size:14px;margin-top:12px">I den ekte appen sendes du n\u00e5 til ${name} for \u00e5 logge inn (OAuth 2.0). Du godkjenner lesetilgang der, og kommer tilbake hit.</p>
@@ -1715,35 +1749,36 @@ function connectDemo(p) {
   });
 }
 
-function connectCanvasReal() {
-  openOverlay('modal', 'Koble til Canvas', `
-    <p style="font-size:14px;margin-top:12px">Lim inn din personlige <b>Kalenderstr\u00f8m</b>-lenke fra Canvas, s\u00e5 hentes fristene dine automatisk.</p>
-    <details style="margin:10px 0"><summary class="sub" style="cursor:pointer;font-weight:600;color:var(--ink)">Hvor finner jeg lenken?</summary>
-      <ol class="sub" style="line-height:1.8;margin:8px 0 0;padding-left:20px"><li>Logg inn i Canvas i nettleseren (ikke Canvas-appen).</li><li>Trykk <b>Kalender</b> i menyen til venstre.</li>
-      <li>Nederst til h\u00f8yre: trykk <b>Kalenderstr\u00f8m</b>. Er vinduet smalt, ligger den nederst p\u00e5 siden.</li><li>Kopier lenken. Den slutter p\u00e5 <code>.ics</code>.</li></ol></details>
-    <form id="cvForm" class="form" novalidate><div><label class="l" for="cvUrl">Kalenderstr\u00f8m-lenke</label>
-      <input class="input" id="cvUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://skolen.instructure.com/feeds/calendars/user_\u2026.ics" value="${esc(DB.canvasFeed || '')}"></div>
+const connectCanvasReal = () => connectFeed('canvas');
+function connectFeed(p) {
+  const F = FEED[p], K = fkeys(p);
+  openOverlay('modal', `Koble til ${F.name}`, `
+    <p style="font-size:14px;margin-top:12px">Lim inn din personlige <b>${F.linkName}</b> fra ${F.name}, s\u00e5 hentes fristene dine automatisk.</p>
+    <details style="margin:10px 0"${p === 'itslearning' ? ' open' : ''}><summary class="sub" style="cursor:pointer;font-weight:600;color:var(--ink)">Hvor finner jeg lenken?</summary>
+      <ol class="sub" style="line-height:1.8;margin:8px 0 0;padding-left:20px">${F.steps.map((x) => `<li>${x}</li>`).join('')}</ol></details>
+    <form id="cvForm" class="form" novalidate><div><label class="l" for="cvUrl">${F.linkName}</label>
+      <input class="input" id="cvUrl" type="url" inputmode="url" autocomplete="off" placeholder="${F.placeholder}" value="${esc(DB[K.feed] || '')}"></div>
       <p id="cvErr" class="sub" style="color:var(--bad);margin:0" role="alert" hidden></p>
-      <p class="sub" style="margin:0;font-size:12.5px">Lenken er personlig og lagres bare i denne nettleseren. Del den ikke med andre.</p>
-      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><button type="button" class="btn ghost" id="cvEx">Bruk eksempelkonto i stedet</button><button class="btn pri" id="cvGo">Hent frister</button></div></form>
+      <p class="sub" style="margin:0;font-size:12.5px">Lenken er personlig. ${LIVE_MODE ? 'Den lagres p\u00e5 kontoen din, og bare du har tilgang til den.' : 'Den lagres bare i denne nettleseren.'} Del den ikke med andre.</p>
+      <div style="display:flex;justify-content:${LIVE_MODE ? 'flex-end' : 'space-between'};gap:8px;flex-wrap:wrap">${LIVE_MODE ? '' : '<button type="button" class="btn ghost" id="cvEx">Bruk eksempelkonto i stedet</button>'}<button class="btn pri" id="cvGo">Hent frister</button></div></form>
     <div class="cv-file" id="cvDrop">
       <div class="t1" style="font-size:14px">Eller: last opp kalenderfila</div>
-      <p class="sub" style="margin:4px 0 8px">${inPreview() ? '<b>Bruk dette i forh\u00e5ndsvisningen</b>, som ikke kan hente lenken selv. ' : 'Virker uten server, ogs\u00e5 i forh\u00e5ndsvisningen. '}\u00c5pne Kalenderstr\u00f8m-lenken i nettleseren${'<span id="cvDl"></span>'}, s\u00e5 lastes fila <code>user_\u2026.ics</code> ned. Velg den her, eller dra den inn.</p>
+      <p class="sub" style="margin:4px 0 8px">${inPreview() ? '<b>Bruk dette i forh\u00e5ndsvisningen</b>, som ikke kan hente lenken selv. ' : 'Virker uten server, ogs\u00e5 i forh\u00e5ndsvisningen. '}\u00c5pne ${F.linkName}en i nettleseren${'<span id="cvDl"></span>'}, s\u00e5 lastes kalenderfila (<code>${F.fileName}</code>) ned. Velg den her, eller dra den inn.</p>
       <label class="btn" for="cvFile">${ico('upload', 15)} Velg .ics-fil</label><input type="file" id="cvFile" accept=".ics,text/calendar" class="sr-only">
       <p id="cvFileErr" class="sub" style="color:var(--bad);margin:6px 0 0" role="alert" hidden></p>
     </div>`,
   (el) => {
     const useEvents = (events, how) => {
-      const items = realCanvasItems(events);
-      if (how.file) { DB.canvasFeed = null; DB.canvasFile = { name: how.file, at: new Date().toISOString() }; } else { DB.canvasFeed = how.url; DB.canvasFile = null; }
-      DB.canvasError = null; DB.canvasLastSync = new Date().toISOString(); DB.conns.canvas = 'tilkoblet';
-      DB.ext = DB.ext.filter((x) => x.platform !== 'canvas').concat(items); audit('CONNECTION_TILKOBLET', 'user_connections'); save();
-      closeOverlay(); toast(`Canvas koblet til. Hentet ${items.length} ${items.length === 1 ? 'frist' : 'frister'}${how.file ? ' fra fila' : ''}.`); render();
+      const items = realCanvasItems(events, p), other = events.filter((e) => e.kind === 'annet').length;
+      if (how.file) { DB[K.feed] = null; DB[K.file] = { name: how.file, at: new Date().toISOString() }; } else { DB[K.feed] = how.url; DB[K.file] = null; }
+      DB[K.err] = null; DB[K.last] = new Date().toISOString(); DB.conns[p] = 'tilkoblet';
+      DB.ext = DB.ext.filter((x) => x.platform !== p).concat(items); audit('CONNECTION_TILKOBLET', 'user_connections'); save();
+      closeOverlay(); toast(`${F.name} koblet til. Hentet ${items.length} ${items.length === 1 ? 'frist' : 'frister'}${how.file ? ' fra fila' : ''}.${other ? ` ${other} andre kalenderhendelser (ikke frister) er hoppet over.` : ''}`); render();
     };
     const fileErr = el.querySelector('#cvFileErr');
     const takeFile = async (file) => {
       fileErr.hidden = true;
-      try { useEvents(await readCanvasFile(file), { file: file.name }); } catch (ex) { fileErr.textContent = ex.message; fileErr.hidden = false; }
+      try { useEvents(await readCanvasFile(file, p), { file: file.name }); } catch (ex) { fileErr.textContent = ex.message; fileErr.hidden = false; }
     };
     el.querySelector('#cvFile').addEventListener('change', (e) => takeFile(e.target.files[0]));
     const drop = el.querySelector('#cvDrop');
@@ -1751,19 +1786,19 @@ function connectCanvasReal() {
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
     drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); takeFile(e.dataTransfer.files[0]); });
     const urlIn = el.querySelector('#cvUrl'), dl = el.querySelector('#cvDl');
-    const showDl = () => { const u = urlIn.value.trim(); dl.innerHTML = CANVAS_FEED_RX.test(u) ? ` (<a href="${esc(u)}" target="_blank" rel="noopener">\u00e5pne lenken du limte inn</a>)` : ''; };
+    const showDl = () => { const u = urlIn.value.trim(); dl.innerHTML = F.rx.test(u) ? ` (<a href="${esc(u)}" target="_blank" rel="noopener">\u00e5pne lenken du limte inn</a>)` : ''; };
     urlIn.addEventListener('input', showDl); showDl();
-    el.querySelector('#cvEx').addEventListener('click', () => {
-      DB.canvasFeed = null; DB.canvasFile = null; DB.canvasError = null; DB.conns.canvas = 'tilkoblet'; DB.ext = DB.ext.filter((x) => x.platform !== 'canvas').concat(exampleItems('canvas'));
-      audit('CONNECTION_TILKOBLET', 'user_connections'); save(); closeOverlay(); toast('Canvas: eksempelkonto koblet til'); render();
+    const ex = el.querySelector('#cvEx'); if (ex) ex.addEventListener('click', () => {
+      DB[K.feed] = null; DB[K.file] = null; DB[K.err] = null; DB.conns[p] = 'tilkoblet'; DB.ext = DB.ext.filter((x) => x.platform !== p).concat(exampleItems(p));
+      audit('CONNECTION_TILKOBLET', 'user_connections'); save(); closeOverlay(); toast(`${F.name}: eksempelkonto koblet til`); render();
     });
     el.querySelector('#cvForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const url = el.querySelector('#cvUrl').value.trim(), err = el.querySelector('#cvErr'), btn = el.querySelector('#cvGo');
-      if (!CANVAS_FEED_RX.test(url)) { err.textContent = 'Dette ser ikke ut som en Kalenderstr\u00f8m-lenke. Den skal se slik ut: https://skolen.instructure.com/feeds/calendars/user_\u2026.ics'; err.hidden = false; return; }
+      if (!F.rx.test(url)) { err.textContent = F.bad; err.hidden = false; return; }
       btn.disabled = true; btn.textContent = 'Henter \u2026'; err.hidden = true;
       try {
-        useEvents(await fetchCanvasFeed(url), { url });
+        useEvents(await fetchCanvasFeed(url, p), { url });
       } catch (ex) {
         err.textContent = ex.message + (inPreview() ? ' Du kan laste opp kalenderfila under i stedet.' : ''); err.hidden = false; btn.disabled = false; btn.textContent = 'Hent frister';
         if (inPreview()) el.querySelector('#cvDrop').classList.add('hl');
@@ -1774,9 +1809,9 @@ function connectCanvasReal() {
 
 /* ---- Sider ---- */
 const exampleNote = () => LIVE_MODE ? '' : (DB.canvasFeed || DB.canvasFile) ? `<div class="note" style="margin-bottom:16px"><b>Canvas-fristene er ekte</b> og hentet fra din Canvas. Skoledataene (BrainBord) og Teams er fortsatt testdata. Canvas forteller ikke om du har levert, s\u00e5 sett status selv.</div>` : `<div class="note warn" style="margin-bottom:16px"><b>Eksempeldata.</b> Skoledataene (BrainBord) er fra en testskole, og Canvas/Teams er eksempelkontoer. Ingenting er hentet fra ekte systemer.</div>`;
-const connStrip = () => `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${['iskole', 'canvas', 'teams'].map((p) => {
+const connStrip = () => `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${['iskole', 'canvas', 'itslearning', 'teams'].map((p) => {
   const st = p === 'iskole' ? 'ikke_tilkoblet' : DB.conns[p]; const ok = st === 'tilkoblet';
-  return `<a href="#integrasjoner" class="chip" style="border:1px solid var(--line);padding:4px 10px;text-decoration:none;color:${ok ? 'var(--good)' : 'var(--muted)'}"><span class="dot" style="background:${ok ? 'var(--good)' : 'var(--line)'}"></span>${SRC[p]}: ${ok ? (p === 'canvas' && (DB.canvasFeed || DB.canvasFile) ? 'tilkoblet' : 'tilkoblet (eksempel)') : 'ikke tilkoblet'}</a>`;
+  return `<a href="#integrasjoner" class="chip" style="border:1px solid var(--line);padding:4px 10px;text-decoration:none;color:${ok ? 'var(--good)' : 'var(--muted)'}"><span class="dot" style="background:${ok ? 'var(--good)' : 'var(--line)'}"></span>${SRC[p]}: ${ok ? (FEED[p] && (feedOf(p) || fileOf(p)) ? 'tilkoblet' : 'tilkoblet (eksempel)') : 'ikke tilkoblet'}</a>`;
 }).join('')}</div>`;
 function taskRow(t) {
   const u = urg(t);
@@ -1848,7 +1883,7 @@ V.mine = () => {
     + `<div class="card toolbar"><input class="input" id="mQ" placeholder="S\u00f8k i oppgaver \u2026" value="${esc(s.q)}" aria-label="S\u00f8k" style="flex:1;min-width:160px;width:auto">
       <select class="input auto" id="mShow" aria-label="Vis">${[['apne', 'Ikke levert'], ['ferdige', 'Levert'], ['alle', 'Alle']].map(([v, l]) => `<option value="${v}" ${s.show === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       ${s.show === 'ferdige' ? `<select class="input auto" id="mOrder" aria-label="Sortering"><option value="levert" ${s.order === 'levert' ? 'selected' : ''}>Sist levert f\u00f8rst</option><option value="prioritet" ${s.order === 'prioritet' ? 'selected' : ''}>Prioritet P1 \u2192 P4</option></select>` : ''}
-      <select class="input auto" id="mSrc" aria-label="Kilde">${[['alle', 'Alle kilder'], ['canvas', 'Canvas'], ['teams', 'Teams'], ['skolehub', 'BrainBord']].map(([v, l]) => `<option value="${v}" ${s.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`
+      <select class="input auto" id="mSrc" aria-label="Kilde">${[['alle', 'Alle kilder'], ['canvas', 'Canvas'], ['itslearning', 'itslearning'], ['teams', 'Teams'], ['skolehub', 'BrainBord']].map(([v, l]) => `<option value="${v}" ${s.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`
     + (rows.length ? `<div class="grid" style="gap:8px">${rows.map((t, idx) => { const u = urg(t), p = prioOf(t.due);
       const header = byPrio && (idx === 0 || prioOf(rows[idx - 1].due) !== p)
         ? `<h3 style="font-size:14px;margin:${idx ? '14px' : '0'} 0 2px;display:flex;align-items:center;gap:8px">${p ? `<span class="pchip p${p}">P${p}</span>` : ''}${P_HEAD[p]} <span class="sub" style="font-weight:400">(${rows.filter((x) => prioOf(x.due) === p).length})</span></h3>` : '';
@@ -1918,7 +1953,7 @@ V.assistent = () => {
 /* ---- Integrasjoner: egne tilkoblinger f\u00f8rst ---- */
 const schoolInts = V.integrasjoner;
 V.integrasjoner = () => head('Integrasjoner', 'Koble til dine egne kontoer, s\u00e5 samles alt i BrainBord. Innlogging skjer alltid hos tjenesten selv.')
-  + `<h2 style="font-size:16px;margin-bottom:10px">Mine tilkoblinger</h2><div class="grid int-grid">${['iskole', 'canvas', 'teams'].map(connCard).join('')}</div>`
+  + `<h2 style="font-size:16px;margin-bottom:10px">Mine tilkoblinger</h2><div class="grid int-grid">${['iskole', 'canvas', 'itslearning', 'teams'].map(connCard).join('')}</div>`
   + (staff() ? `<h2 style="font-size:16px;margin:28px 0 6px">Skolens integrasjoner</h2><p class="sub" style="margin:0 0 12px">Synkronisering for hele skolen (administrator).</p>`
     + schoolInts().replace(/^<div class="head">[\s\S]*?<\/div><\/div>/, '') : '');
 
@@ -2975,8 +3010,8 @@ function bind(){
   view.querySelectorAll('[data-plview]').forEach(b=>b.addEventListener('click',()=>{PL_STATE.view=b.dataset.plview;render()}));
   view.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();showOpen(b.dataset.open)}));
   view.querySelectorAll('[data-conn-connect]').forEach(b=>b.addEventListener('click',()=>connectDemo(b.dataset.connConnect)));
-  view.querySelectorAll('[data-conn-sync]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.connSync;if(p==='canvas'&&DB.canvasFeed){syncCanvasReal(true);return;}if(p==='canvas'&&DB.canvasFile){connectCanvasReal();return;}DB.ext=DB.ext.filter(x=>x.platform!==p).concat(exampleItems(p));save();toast(`Synkronisert: ${DB.ext.filter(x=>x.platform===p).length} elementer (eksempel)`);render()}));
-  view.querySelectorAll('[data-conn-disc]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.connDisc;if(p==='canvas'){DB.canvasFeed=null;DB.canvasFile=null;DB.canvasError=null;DB.canvasLastSync=null;}DB.conns[p]='ikke_tilkoblet';DB.ext=DB.ext.filter(x=>x.platform!==p);audit('DISCONNECT','user_connections');save();toast('Koblet fra. Tilgang og hentede data er slettet.');render()}));
+  view.querySelectorAll('[data-conn-sync]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.connSync;if(FEED[p]&&feedOf(p)){syncFeed(p,true);return;}if(FEED[p]&&(fileOf(p)||LIVE_MODE)){connectFeed(p);return;}if(LIVE_MODE)return;DB.ext=DB.ext.filter(x=>x.platform!==p).concat(exampleItems(p));save();toast(`Synkronisert: ${DB.ext.filter(x=>x.platform===p).length} elementer (eksempel)`);render()}));
+  view.querySelectorAll('[data-conn-disc]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.connDisc;if(FEED[p]){const K=fkeys(p);DB[K.feed]=null;DB[K.file]=null;DB[K.err]=null;DB[K.last]=null;}DB.conns[p]='ikke_tilkoblet';DB.ext=DB.ext.filter(x=>x.platform!==p);audit('DISCONNECT','user_connections');save();toast('Koblet fra. Tilgang og hentede data er slettet.');render()}));
   view.querySelectorAll('[data-ex]').forEach(b=>b.addEventListener('click',()=>askAssistant(b.dataset.ex)));
   const askF=view.querySelector('#askF');askF&&askF.addEventListener('submit',e=>{e.preventDefault();const v=view.querySelector('#askQ').value.trim();if(v)askAssistant(v)});
   const mQ=view.querySelector('#mQ');mQ&&mQ.addEventListener('input',e=>{M_STATE.q=e.target.value;const pos=e.target.selectionStart;render();const x=view.querySelector('#mQ');x.focus();x.setSelectionRange(pos,pos)});
@@ -3259,7 +3294,7 @@ const STK = (() => {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(refresh);
   return { refresh, toTop: () => { scroller.scrollTop = 0; } };
 })();
-setTimeout(()=>{if(DB.loggedIn&&DB.canvasFeed&&Date.now()-Date.parse(DB.canvasLastSync||0)>36e5)syncCanvasReal(false)},1500);
+setTimeout(()=>{Object.keys(FEED).forEach(p=>{const K=fkeys(p);if(DB.loggedIn&&DB[K.feed]&&Date.now()-Date.parse(DB[K.last]||0)>36e5)syncFeed(p,false)})},1500);
 /* ================= Kontoer: innlogging og registrering (prototype av Flask-systemet) =================
    Samme regler som Flask-versjonen (\u00abbrainbord-login\u00bb): registrering med rolle Elev eller L\u00e6rer,
    unik e-post, \u00abHusk meg\u00bb, utlogging, eget elev- og l\u00e6rer-dashbord, og l\u00e6rere som m\u00e5 godkjennes
@@ -4552,7 +4587,7 @@ const LIVE = (() => {
   // ---- Personlige data som f\u00f8lger kontoen ----
   // Canvas-tilkobling, importerte frister, egen status, chat osv. lagres i bb_user_state (bare brukeren selv har tilgang),
   // med en kopi p\u00e5 enheten s\u00e5 appen \u00e5pner raskt. Logger du inn et annet sted, eller etter utlogging, hentes alt fra serveren.
-  const LOCAL = ['conns', 'ext', 'canvasFeed', 'canvasFile', 'canvasLastSync', 'canvasError', 'myStat', 'myStatAt', 'supportAI', 'supportFU', 'supportHO', 'supportDemo', 'supportAIUnread'];
+  const LOCAL = ['conns', 'ext', 'canvasFeed', 'canvasFile', 'canvasLastSync', 'canvasError', 'itsFeed', 'itsFile', 'itsLastSync', 'itsError', 'myStat', 'myStatAt', 'supportAI', 'supportFU', 'supportHO', 'supportDemo', 'supportAIUnread'];
   const SY = { ready: false, last: '', at: 0, unsent: false, timer: null, saving: false, again: false, err: null, uid: null };
   const pack = () => { const o = {}; LOCAL.forEach((k) => { if (DB[k] !== undefined) o[k] = DB[k]; }); return o; };
   function cacheWrite(sent) { try { if (SY.uid) localStorage.setItem(CKEY + ':' + SY.uid, JSON.stringify({ d: JSON.parse(SY.last || '{}'), at: SY.at, sent })); } catch (e) { /* full eller blokkert */ } }
@@ -4634,7 +4669,7 @@ const LIVE = (() => {
   function skeleton() {
     const d = generate();
     Object.assign(d, { role: 'student', loggedIn: false, subjects: [], acts: [], absences: [], documents: [], audit: [], solved: {}, myStat: {}, myStatAt: {}, ext: [],
-      conns: { canvas: 'ikke_tilkoblet', teams: 'ikke_tilkoblet' }, support: { seq: 0, cases: [] }, supportAI: [], supportFU: null, supportHO: null, canvasFeed: null, canvasFile: null, grades: {}, otherAbs: [] });
+      conns: { canvas: 'ikke_tilkoblet', itslearning: 'ikke_tilkoblet', teams: 'ikke_tilkoblet' }, support: { seq: 0, cases: [] }, supportAI: [], supportFU: null, supportHO: null, canvasFeed: null, canvasFile: null, itsFeed: null, itsFile: null, grades: {}, otherAbs: [] });
     return d;
   }
   async function start() {
