@@ -1133,7 +1133,7 @@ var PUSH_HOOKS = {}; // settes av PUSH-modulen: varsler synkes n\u00e5r fristene
 var LIVE_HOOKS = {}; // settes av LIVE-modulen
 /* Live-modus (ekte innlogging og lagring i Supabase) p\u00e5 den publiserte nettsiden. Forh\u00e5ndsvisningen
    (innebygd eller fil) og \u00abPr\u00f8v demoen\u00bb bruker testdata i nettleseren som f\u00f8r. */
-const LIVE_MODE = (() => { try { if (sessionStorage.getItem('bb-demo')) return false; } catch (e) { /* ignorer */ } let framed = true; try { framed = window.self !== window.top; } catch (e) { /* innebygd */ } return !framed && /^https?:$/.test(location.protocol); })();
+const LIVE_MODE = (() => { try { if (sessionStorage.getItem('bb-demo') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return false; } catch (e) { /* ignorer: \u00abbb-demo\u00bb brukes bare av de automatiske testene p\u00e5 egen maskin */ } let framed = true; try { framed = window.self !== window.top; } catch (e) { /* innebygd */ } return !framed && /^https?:$/.test(location.protocol); })();
 function save(){if(LIVE_MODE){if(LIVE_HOOKS.save)LIVE_HOOKS.save();if(LIVE_HOOKS.changed)LIVE_HOOKS.changed()}else{try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}}if(PUSH_HOOKS.changed)PUSH_HOOKS.changed()}
 DB=load();
 
@@ -2558,10 +2558,10 @@ V.landing = () => `<div class="landing-hero" style="background-image:url(${HERO_
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button class="btn pri" data-auth="login" style="font-size:16px;padding:11px 26px">Logg inn</button>
     <button class="btn" data-auth="register" style="font-size:16px;padding:11px 22px">Opprett konto</button></div>
-  <p style="font-size:13px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center">Pr\u00f8v uten konto:
+  ${LIVE_MODE ? '' : `<p style="font-size:13px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center">Pr\u00f8v uten konto:
     <button type="button" class="linkbtn" data-quick="student" style="color:#7fd3ea">Elev</button>
     <button type="button" class="linkbtn" data-quick="teacher" style="color:#7fd3ea">L\u00e6rer</button>
-    <button type="button" class="linkbtn" data-quick="admin" style="color:#7fd3ea">Administrator</button></p></div></div>`;
+    <button type="button" class="linkbtn" data-quick="admin" style="color:#7fd3ea">Administrator</button></p>`}</div></div>`;
 
 /* ================= L\u00e6rerportal: ClassFlow (egen side for l\u00e6rere) ================= */
 // Elevens sider er uendret. L\u00e6reren f\u00e5r egen meny, egen forside og egne sider for klasser og vurdering.
@@ -3779,7 +3779,7 @@ const CS = (() => {
       addAI({ from: 'ai', html: `<p><b>${a.title}</b></p>${artHtml(a)}${also ? `<p class="cs-also">Se ogs\u00e5: <button type="button" class="cs-link" data-art="${also.id}">${also.title}</button></p>` : ''}`, plain: a.title, fb: 'ask', art: a.id, offer: false, q });
       if (a.offer) addAI({ from: 'ai', text: 'Vil du kontakte kundeservice?', offer: true, q });
     } else if (r.kind === 'school') {
-      if (!DB.loggedIn) addAI({ from: 'ai', text: 'Logg inn eller velg \u00abPr\u00f8v uten konto\u00bb, s\u00e5 kan jeg se pr\u00f8vene og oppgavene dine.' });
+      if (!DB.loggedIn) addAI({ from: 'ai', text: LIVE_MODE ? 'Logg inn, s\u00e5 kan jeg se pr\u00f8vene og oppgavene dine.' : 'Logg inn eller velg \u00abPr\u00f8v uten konto\u00bb, s\u00e5 kan jeg se pr\u00f8vene og oppgavene dine.' });
       else if (DB.role === 'teacher' || staff()) addAI({ from: 'ai', text: 'Sp\u00f8rsm\u00e5l om pr\u00f8ver og oppgaver svarer jeg p\u00e5 for elever, ut fra deres egne data. Som l\u00e6rer finner du dette i ClassFlow.', fb: 'ask', q });
       else addAI({ from: 'ai', html: schoolHtml(r.r), plain: r.r.m.length ? `Fant ${r.r.m.length} ${r.r.m.length === 1 ? 'oppf\u00f8ring' : 'oppf\u00f8ringer'}` : 'Fant ingen oppf\u00f8ring', fb: 'ask', q, school: true });
     } else if (r.kind === 'human') {
@@ -3800,7 +3800,7 @@ const CS = (() => {
     return u.length ? u[u.length - 1].text : '';
   }
   function startHandoff(q) {
-    if (!me()) { addAI({ from: 'ai', text: 'Logg inn eller velg \u00abPr\u00f8v uten konto\u00bb f\u00f8rst, s\u00e5 kan kundeservice svare deg.' }); return; }
+    if (!me()) { addAI({ from: 'ai', text: LIVE_MODE ? 'Logg inn f\u00f8rst, s\u00e5 kan kundeservice svare deg.' : 'Logg inn eller velg \u00abPr\u00f8v uten konto\u00bb f\u00f8rst, s\u00e5 kan kundeservice svare deg.' }); return; }
     const open = hoCase();
     if (open && open.status !== 'lost') { addAI({ from: 'ai', text: `Kundeservice har allerede saken din (${open.no}). Skriv her, s\u00e5 f\u00e5r teamet meldingen.` }); return; }
     DB.supportHO = { stage: 'describe', q: q || '' };
@@ -3892,7 +3892,7 @@ const CS = (() => {
     panel.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
       const h = b.dataset.go;
       if (h === '#chat') { DB.supportAIUnread = false; save(); nav('ai'); return; }
-      if (!DB.loggedIn) { toast('Logg inn eller velg \u00abPr\u00f8v uten konto\u00bb f\u00f8rst.'); return; }
+      if (!DB.loggedIn) { toast(LIVE_MODE ? 'Logg inn f\u00f8rst.' : 'Logg inn eller velg \u00abPr\u00f8v uten konto\u00bb f\u00f8rst.'); return; }
       location.hash = h; if (matchMedia('(max-width:620px)').matches) setOpen(false);
     }));
     panel.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => ask(b.dataset.ask)));
@@ -4991,7 +4991,7 @@ if (LIVE_MODE) {
   bindProfil = () => LIVE.bindProfil2(view); bindGodkjenning = () => LIVE.bindGodkjenning2(view);
   const cur = () => { const m = LIVE.me(), st = LIVE.state(); return m.id ? { id: m.id, name: m.name, email: st.session && st.session.user ? st.session.user.email : '', role: m.role, teacherStatus: m.teacher_status, createdAt: st.session && st.session.user ? st.session.user.created_at : null } : null; };
   Object.assign(AU, { current: cur, isPending: (u) => !!u && u.role === 'teacher' && u.teacherStatus !== 'approved', restore: LIVE.start, signOut: () => LIVE.signOut(false),
-    openLoginForm: () => LIVE.loginForm(), openRegisterForm: () => LIVE.registerForm(), tryWithout: (r) => LIVE.enterDemo(r), users: () => [] });
+    openLoginForm: () => LIVE.loginForm(), openRegisterForm: () => LIVE.registerForm(), tryWithout: () => {}, users: () => [] });   // ingen demo p\u00e5 den ekte nettsiden
   Object.assign(LIVE_HOOKS, { changed: LIVE.changed, save: LIVE.saveLocal, me: LIVE.me });
 }
 function assistentToChat(){if(location.hash!=='#assistent')return false;history.replaceState(null,'','#'+(DB.loggedIn&&DB.role==='teacher'?'classflow':'dashboard'));setTimeout(()=>CS.open('ai'),0);return true}
